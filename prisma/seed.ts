@@ -4,11 +4,11 @@ import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
-async function ensureUser(email: string, password: string) {
+async function ensureUser(email: string, password: string, name: string) {
   const passwordHash = await bcrypt.hash(password, 12);
   return prisma.user.upsert({
     where: { email },
-    create: { email, passwordHash },
+    create: { email, passwordHash, name },
     update: { passwordHash }
   });
 }
@@ -57,9 +57,10 @@ async function log(
 
 async function main() {
   // Users
-  const alice = await ensureUser("alice@example.com", "password123");
-  const bob   = await ensureUser("bob@example.com",   "password123");
-
+  const alice = await ensureUser("alice@example.com", "password123", "Alice Admin");
+  const bob   = await ensureUser("bob@example.com",   "password123", "Bob Manager");
+  const charlie = await ensureUser("charlie@example.com", "password123", "Charlie Staff");
+  
   // Tenants
   const acme   = await ensureTenant("acme",   "ACME, Inc.");
   const globex = await ensureTenant("globex", "Globex Corp");
@@ -80,6 +81,7 @@ async function main() {
   await log(globex.id, alice.id, "PRODUCT_CREATE", "Product", "GLX-100", { priceInPence: 4999 });
 
   console.log("Seed complete ✅");
+  
 }
 
 main()

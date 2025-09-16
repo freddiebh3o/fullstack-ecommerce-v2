@@ -9,14 +9,15 @@ datasource db {
 }
 
 model User {
-  id         String        @id @default(uuid())
-  email      String        @unique
+  id           String      @id @default(uuid())
+  email        String      @unique
+  name         String?     // optional display name
   passwordHash String
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
 
-  memberships Membership[]
-  auditLogs   AuditLog[]
+  memberships  Membership[]
+  auditLogs    AuditLog[]
 
   @@index([email])
 }
