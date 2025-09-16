@@ -1,0 +1,97 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id         String        @id @default(uuid())
+  email      String        @unique
+  passwordHash String
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  memberships Membership[]
+  auditLogs   AuditLog[]
+
+  @@index([email])
+}
+
+model Tenant {
+  id         String        @id @default(uuid())
+  slug       String        @unique
+  name       String
+  isActive   Boolean       @default(true)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  memberships Membership[]
+  products    Product[]
+  auditLogs   AuditLog[]
+
+  @@index([slug])
+}
+
+model Membership {
+  id         String   @id @default(uuid())
+  userId     String
+  tenantId   String
+
+  // v1 "boolean capabilities"
+  isOwner            Boolean @default(false)
+  canManageMembers   Boolean @default(false)
+  canManageProducts  Boolean @default(false)
+  canViewProducts    Boolean @default(true)
+
+  createdAt  DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tenantId]) // one membership per (user, tenant)
+  @@index([tenantId])
+  @@index([userId])
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  tenantId    String
+  sku         String
+  name        String
+  description String?
+  priceInCents Int
+  currency    String   @default("USD") // ISO-4217-like 3-char (not enforced here)
+  isActive    Boolean  @default(true)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, sku]) // tenant-scoped SKU uniqueness
+  @@index([tenantId, isActive])
+}
+
+model AuditLog {
+  id         String    @id @default(uuid())
+  tenantId   String?   // some events might be global (e.g., login before selecting tenant)
+  userId     String?
+  action     String    // e.g., "PRODUCT_CREATE", "MEMBERSHIP_UPDATE"
+  entityType String?   // e.g., "Product", "Membership"
+  entityId   String?   // id string of the entity
+  diff       Json?     // optional structured changes
+  ip         String?
+  userAgent  String?
+
+  createdAt  DateTime  @default(now())
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([userId, createdAt])
+}
