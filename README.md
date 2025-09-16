@@ -29,6 +29,27 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
+## Tenant DB usage
+
+```ts
+import { prismaForTenant } from "@/lib/db/tenant-scoped";
+
+// Get a tenant-bound client in server code AFTER you've resolved tenantId
+const db = prismaForTenant(tenantId);
+
+// Safe reads
+await db.product.findMany();                 // auto-scoped
+await db.product.findFirst({ where: { id } });
+
+// Safe writes
+await db.product.create({ data: { sku, name, priceInCents } }); // tenantId auto-injected
+await db.product.updateMany({ where: { id }, data: { name } }); // must include id + tenantId (auto-injected via extension)
+
+// Disallowed (will throw)
+// db.product.findUnique({ where: { id } });
+// db.product.update({ where: { id }, data: { name } });
+// db.product.delete({ where: { id } });
+
 ## Deploy on Vercel
 
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
