@@ -18,7 +18,7 @@ async function main() {
   // Cross-tenant create (explicit wrong tenantId) should be blocked
   try {
     await acmeDb.product.create({
-      data: { tenantId: globex.id, sku: "X-ILLEGAL", name: "Illegal", priceInCents: 1 }
+      data: { tenantId: globex.id, sku: "X-ILLEGAL", name: "Illegal", priceInPence: 1 }
     });
     console.log("Cross-tenant create was NOT blocked");
   } catch {

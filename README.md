@@ -1,5 +1,7 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+USE MANTINE COMPONENT LIBRARY
+
 ## Getting Started
 
 First, run the development server:
@@ -42,7 +44,7 @@ await db.product.findMany();                 // auto-scoped
 await db.product.findFirst({ where: { id } });
 
 // Safe writes
-await db.product.create({ data: { sku, name, priceInCents } }); // tenantId auto-injected
+await db.product.create({ data: { sku, name, priceInPence } }); // tenantId auto-injected
 await db.product.updateMany({ where: { id }, data: { name } }); // must include id + tenantId (auto-injected via extension)
 
 // Disallowed (will throw)

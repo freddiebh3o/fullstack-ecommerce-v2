@@ -7,7 +7,7 @@ export type ProductCreateData = {
   sku: string;
   name: string;
   description?: string | null;
-  priceInCents: number;
+  priceInPence: number;
   currency?: string;
   isActive?: boolean;
 };

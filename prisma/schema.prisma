@@ -58,21 +58,23 @@ model Membership {
 }
 
 model Product {
-  id          String   @id @default(uuid())
-  tenantId    String
-  sku         String
-  name        String
-  description String?
-  priceInCents Int
-  currency    String   @default("USD") // ISO-4217-like 3-char (not enforced here)
-  isActive    Boolean  @default(true)
+  id            String   @id @default(uuid())
+  tenantId      String
+  sku           String
+  name          String
+  description   String?
+  /// price in minor units (pence for GBP)
+  priceInPence  Int
+  /// ISO 4217-like code; default GBP
+  currency      String   @default("GBP")
+  isActive      Boolean  @default(true)
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  @@unique([tenantId, sku]) // tenant-scoped SKU uniqueness
+  @@unique([tenantId, sku])
   @@index([tenantId, isActive])
 }
 

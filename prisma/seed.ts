@@ -34,11 +34,11 @@ async function ensureMembership(userId: string, tenantId: string, caps: Partial<
   });
 }
 
-async function createProduct(tenantId: string, sku: string, name: string, priceInCents: number) {
+async function createProduct(tenantId: string, sku: string, name: string, priceInPence: number) {
   return prisma.product.upsert({
     where: { tenantId_sku: { tenantId, sku } },
-    create: { tenantId, sku, name, priceInCents },
-    update: { name, priceInCents, isActive: true }
+    create: { tenantId, sku, name, priceInPence },
+    update: { name, priceInPence, isActive: true }
   });
 }
 
@@ -75,9 +75,9 @@ async function main() {
   await createProduct(globex.id, "GLX-100", "Globex Widget",  4999);
 
   // Audit logs
-  await log(acme.id, alice.id, "PRODUCT_CREATE", "Product", "ACM-001", { priceInCents: 2499 });
-  await log(acme.id, alice.id, "PRODUCT_CREATE", "Product", "ACM-002", { priceInCents: 9999 });
-  await log(globex.id, alice.id, "PRODUCT_CREATE", "Product", "GLX-100", { priceInCents: 4999 });
+  await log(acme.id, alice.id, "PRODUCT_CREATE", "Product", "ACM-001", { priceInPence: 2499 });
+  await log(acme.id, alice.id, "PRODUCT_CREATE", "Product", "ACM-002", { priceInPence: 9999 });
+  await log(globex.id, alice.id, "PRODUCT_CREATE", "Product", "GLX-100", { priceInPence: 4999 });
 
   console.log("Seed complete ✅");
 }

@@ -12,7 +12,7 @@ async function mkTenant(slug: string, name: string) {
 async function mkProduct(tenantId: string, sku: string, name: string) {
   return systemDb.product.upsert({
     where: { tenantId_sku: { tenantId, sku } },
-    create: { tenantId, sku, name, priceInCents: 1000 },
+    create: { tenantId, sku, name, priceInPence: 1000 },
     update: { name }
   });
 }
@@ -52,7 +52,7 @@ describe("tenant guard", () => {
       data: {
         sku: "D-1",
         name: "D one",
-        priceInCents: 1111,
+        priceInPence: 1111,
         // ⬇️ satisfy Prisma type; guard validates it equals t.id
         tenant: { connect: { id: t.id } },
       },
@@ -77,7 +77,7 @@ describe("tenant guard", () => {
         create: {
           sku: "E-1",
           name: "E one",
-          priceInCents: 2000,
+          priceInPence: 2000,
           tenant: { connect: { id: t.id } }, // ⬅️ added
         },
         update: { name: "E one v2" },
@@ -91,7 +91,7 @@ describe("tenant guard", () => {
         create: {
           sku: "E-2",
           name: "x",
-          priceInCents: 1,
+          priceInPence: 1,
           tenant: { connect: { id: t.id } }, // still required by type; guard checks 'where'
         },
         update: { name: "y" },
