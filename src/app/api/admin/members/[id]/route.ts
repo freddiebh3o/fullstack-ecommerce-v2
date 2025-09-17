@@ -4,6 +4,7 @@ import { requireSession } from "@/lib/auth/session";
 import { requireCurrentTenantId } from "@/lib/core/tenant";
 import { prismaForTenant } from "@/lib/db/tenant-scoped";
 import { systemDb } from "@/lib/db/system";
+import { ok, fail } from "@/lib/utils/http";
 
 // input: at least one cap must be present
 const UpdateCapsInput = z.object({
@@ -156,6 +157,38 @@ export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }
   // (Optional) TODO: write an auditLog entry here
 
   return NextResponse.json({ ok: true });
+}
+
+export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params;
+  const session = await requireSession();
+  const tenantId = await requireCurrentTenantId();
+
+  const me = await systemDb.membership.findFirst({
+    where: { userId: (session.user as any).id, tenantId },
+    select: { canManageMembers: true },
+  });
+  if (!me || !me.canManageMembers) return fail(403, "Forbidden");
+
+  const db = prismaForTenant(tenantId);
+  const m = await db.membership.findFirst({
+    where: { id },
+    include: { user: { select: { id: true, email: true, name: true } } },
+  });
+  if (!m) return fail(404, "Not found");
+
+  return ok({
+    membershipId: m.id,
+    userId: m.userId,
+    user: m.user,
+    caps: {
+      isOwner: m.isOwner,
+      canManageMembers: m.canManageMembers,
+      canManageProducts: m.canManageProducts,
+      canViewProducts: m.canViewProducts,
+    },
+    createdAt: m.createdAt,
+  });
 }
 
 export async function PUT() {
