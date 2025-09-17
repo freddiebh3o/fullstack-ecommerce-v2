@@ -8,6 +8,8 @@ import { isUniqueViolation } from "@/lib/utils/prisma-errors";
 import { ProductCreateSchema } from "@/lib/core/schemas";
 import { writeAudit } from "@/lib/core/audit";
 import { withApi } from "@/lib/utils/with-api";
+import { loggerForRequest } from "@/lib/log/log";
+import { rateLimitFixedWindow } from "@/lib/security/rate-limit";
 
 export const GET = withApi(async (req: Request) => {
   const session = await requireSession();
@@ -57,6 +59,24 @@ export const GET = withApi(async (req: Request) => {
 export const POST = withApi(async (req: Request) => {
   const session = await requireSession();
   const tenantId = await requireCurrentTenantId();
+
+  // Per-user mutation cap
+  const { log, requestId } = loggerForRequest(req);
+  const userId = (session.user as any).id as string;
+  const uStats = rateLimitFixedWindow({
+    key: `mut:user:${userId}`,
+    limit: Number(process.env.RL_MUTATION_PER_USER_PER_MIN || 60),
+    windowMs: 60_000,
+  });
+  if (!uStats.ok) {
+    log.warn({ event: "rate_limited", scope: "mut:user", userId, ...uStats });
+    const res = fail(429, "Too Many Requests", undefined, req);
+    res.headers.set("x-request-id", requestId);
+    res.headers.set("Retry-After", String(uStats.retryAfter ?? 60));
+    res.headers.set("X-RateLimit-Limit", String(uStats.limit));
+    res.headers.set("X-RateLimit-Remaining", String(uStats.remaining));
+    return res;
+  }
 
   const me = await systemDb.membership.findFirst({
     where: { userId: (session.user as any).id, tenantId },

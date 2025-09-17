@@ -7,10 +7,28 @@ import { ProductUpdateInput as ProductUpdateSchema } from "@/lib/validation/prod
 import { ok, fail } from "@/lib/utils/http";
 import { writeAudit, diffForUpdate } from "@/lib/core/audit";
 import { withApi } from "@/lib/utils/with-api";
+import { loggerForRequest } from "@/lib/log/log";
+import { rateLimitFixedWindow } from "@/lib/security/rate-limit";
 
 export const PATCH = withApi(async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   const session = await requireSession();
   const tenantId = await requireCurrentTenantId();
+  const { log } = loggerForRequest(req);
+  const userId = (session.user as any).id as string;
+  const uStats = rateLimitFixedWindow({
+    key: `mut:user:${userId}`,
+    limit: Number(process.env.RL_MUTATION_PER_USER_PER_MIN || 60),
+    windowMs: 60_000,
+  });
+  if (!uStats.ok) {
+    log.warn({ event: "rate_limited", scope: "mut:user", userId, ...uStats });
+    const res = fail(429, "Too Many Requests", undefined, req);
+    res.headers.set("Retry-After", String(uStats.retryAfter ?? 60));
+    res.headers.set("X-RateLimit-Limit", String(uStats.limit));
+    res.headers.set("X-RateLimit-Remaining", String(uStats.remaining));
+    return res;
+  }
+
   const { id } = await params;
 
   const membership = await systemDb.membership.findFirst({
@@ -79,6 +97,21 @@ export const DELETE = withApi(async (req: Request, { params }: { params: Promise
   const { id } = await params;
   const session = await requireSession();
   const tenantId = await requireCurrentTenantId();
+  const { log } = loggerForRequest(req);
+  const userId = (session.user as any).id as string;
+  const uStats = rateLimitFixedWindow({
+    key: `mut:user:${userId}`,
+    limit: Number(process.env.RL_MUTATION_PER_USER_PER_MIN || 60),
+    windowMs: 60_000,
+  });
+  if (!uStats.ok) {
+    log.warn({ event: "rate_limited", scope: "mut:user", userId, ...uStats });
+    const res = fail(429, "Too Many Requests", undefined, req);
+    res.headers.set("Retry-After", String(uStats.retryAfter ?? 60));
+    res.headers.set("X-RateLimit-Limit", String(uStats.limit));
+    res.headers.set("X-RateLimit-Remaining", String(uStats.remaining));
+    return res;
+  }
 
   const membership = await systemDb.membership.findFirst({
     where: { userId: (session.user as any).id, tenantId },

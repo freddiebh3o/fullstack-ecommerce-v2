@@ -7,6 +7,8 @@ import { z } from "zod";
 import { writeAudit } from "@/lib/core/audit";
 import { ok, fail } from "@/lib/utils/http";
 import { withApi } from "@/lib/utils/with-api";
+import { loggerForRequest } from "@/lib/log/log";
+import { rateLimitFixedWindow } from "@/lib/security/rate-limit";
 
 const CreateMemberInput = z.object({
   email: z.string().email(),
@@ -61,6 +63,21 @@ export const GET = withApi(async (req: Request) => {
 export const POST = withApi(async (req: Request) => {
   const session = await requireSession();
   const tenantId = await requireCurrentTenantId();
+  const { log } = loggerForRequest(req);
+  const userId = (session.user as any).id as string;
+  const uStats = rateLimitFixedWindow({
+    key: `mut:user:${userId}`,
+    limit: Number(process.env.RL_MUTATION_PER_USER_PER_MIN || 60),
+    windowMs: 60_000,
+  });
+  if (!uStats.ok) {
+    log.warn({ event: "rate_limited", scope: "mut:user", userId, ...uStats });
+    const res = fail(429, "Too Many Requests", undefined, req);
+    res.headers.set("Retry-After", String(uStats.retryAfter ?? 60));
+    res.headers.set("X-RateLimit-Limit", String(uStats.limit));
+    res.headers.set("X-RateLimit-Remaining", String(uStats.remaining));
+    return res;
+  }
 
   const me = await systemDb.membership.findFirst({
     where: { userId: (session.user as any).id, tenantId },

@@ -6,6 +6,7 @@ import { verifyDoubleSubmit } from "@/lib/security/csrf";
 import { verifyOriginStrict } from "@/lib/security/origin";
 import { applySecurityHeaders } from "@/lib/security/headers";
 import { logger } from "@/lib/log/log";
+import { ipFromRequest, rateLimitFixedWindow } from "./lib/security/rate-limit";
 
 const SKIP_CSRF_FOR_PATHS = ["/api/security/csrf"];
 const SKIP_ALL_FOR_PREFIXES = ["/api/auth/"];
@@ -39,6 +40,24 @@ export function middleware(req: NextRequest) {
       : Math.random().toString(36).slice(2));
 
   const { pathname } = req.nextUrl;
+
+  if (pathname.startsWith("/api/auth/")) {
+    const ip = ipFromRequest(req);
+    const stats = rateLimitFixedWindow({
+      key: `auth:ip:${ip}`,
+      limit: Number(process.env.RL_AUTH_PER_IP_PER_MIN || 10), // default 10/min
+      windowMs: 60_000,
+    });
+  
+    if (!stats.ok) {
+      logger.warn({ event: "rate_limited", requestId, path: pathname, ip, scope: "auth:ip", ...stats });
+      const res = denyJson(req, requestId, 429, "Too Many Requests");
+      res.headers.set("Retry-After", String(stats.retryAfter ?? 60));
+      res.headers.set("X-RateLimit-Limit", String(stats.limit));
+      res.headers.set("X-RateLimit-Remaining", String(stats.remaining));
+      return res;
+    }
+  }
 
   if (shouldSkipAll(pathname)) {
     const pass = NextResponse.next();
