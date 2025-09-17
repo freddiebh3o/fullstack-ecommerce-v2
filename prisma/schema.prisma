@@ -8,6 +8,16 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Domain {
+  id        String  @id @default(uuid())
+  tenantId  String
+  host      String  @unique   // e.g. shop.acme.com
+  isPrimary Boolean @default(false)
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
 model User {
   id           String      @id @default(uuid())
   email        String      @unique
