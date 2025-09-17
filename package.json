@@ -16,7 +16,8 @@
     "smoke:db": "tsx scripts/smoke-db.ts",
     "smoke:tenant": "tsx scripts/smoke-tenant.ts",
     "test": "vitest",
-    "test:run": "vitest --run"
+    "test:run": "vitest --run",
+    "cleanup:idempotency": "node scripts/cleanup-idempotency.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.16.2",

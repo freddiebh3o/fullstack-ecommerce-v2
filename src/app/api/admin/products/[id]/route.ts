@@ -9,12 +9,24 @@ import { writeAudit, diffForUpdate } from "@/lib/core/audit";
 import { withApi } from "@/lib/utils/with-api";
 import { loggerForRequest } from "@/lib/log/log";
 import { rateLimitFixedWindow } from "@/lib/security/rate-limit";
+import { reserveIdempotency, persistIdempotentSuccess } from "@/lib/security/idempotency";
 
 export const PATCH = withApi(async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   const session = await requireSession();
   const tenantId = await requireCurrentTenantId();
+  const { id } = await params;
+
+  // Idempotency
+  const userId = (session.user as any).id ?? null;
+  const reserve = await reserveIdempotency(req, userId, tenantId);
+  if (reserve.mode === "replay") {
+    return ok(reserve.response, 200, req);
+  }
+  if (reserve.mode === "in_progress") {
+    return fail(409, "Request already in progress", undefined, req);
+  }
+
   const { log } = loggerForRequest(req);
-  const userId = (session.user as any).id as string;
   const uStats = rateLimitFixedWindow({
     key: `mut:user:${userId}`,
     limit: Number(process.env.RL_MUTATION_PER_USER_PER_MIN || 60),
@@ -29,7 +41,6 @@ export const PATCH = withApi(async (req: Request, { params }: { params: Promise<
     return res;
   }
 
-  const { id } = await params;
 
   const membership = await systemDb.membership.findFirst({
     where: { userId: (session.user as any).id, tenantId },
@@ -79,6 +90,10 @@ export const PATCH = withApi(async (req: Request, { params }: { params: Promise<
     },
   });
 
+  if (reserve.mode === "reserved") {
+    await persistIdempotentSuccess(reserve.fp, 200, updated);
+  }
+
   const changedKeys = Object.keys(parsed.data) as (keyof typeof updated)[];
   await writeAudit(db as any, {
     tenantId,
@@ -89,6 +104,7 @@ export const PATCH = withApi(async (req: Request, { params }: { params: Promise<
     diff: diffForUpdate(before as any, updated as any, changedKeys as any),
     req,
   });
+  
 
   return ok(updated, 200, req);
 });

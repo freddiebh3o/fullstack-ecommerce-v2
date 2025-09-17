@@ -10,6 +10,7 @@ import { writeAudit } from "@/lib/core/audit";
 import { withApi } from "@/lib/utils/with-api";
 import { loggerForRequest } from "@/lib/log/log";
 import { rateLimitFixedWindow } from "@/lib/security/rate-limit";
+import { reserveIdempotency, persistIdempotentSuccess } from "@/lib/security/idempotency";
 
 export const GET = withApi(async (req: Request) => {
   const session = await requireSession();
@@ -60,9 +61,18 @@ export const POST = withApi(async (req: Request) => {
   const session = await requireSession();
   const tenantId = await requireCurrentTenantId();
 
+  // Idempotency reservation / replay
+  const userId = (session.user as any).id ?? null;
+  const reserve = await reserveIdempotency(req, userId, tenantId);
+  if (reserve.mode === "replay") {
+    return ok(reserve.response, 201, req);
+  }
+  if (reserve.mode === "in_progress") {
+    return fail(409, "Request already in progress", undefined, req);
+  }
+
   // Per-user mutation cap
   const { log, requestId } = loggerForRequest(req);
-  const userId = (session.user as any).id as string;
   const uStats = rateLimitFixedWindow({
     key: `mut:user:${userId}`,
     limit: Number(process.env.RL_MUTATION_PER_USER_PER_MIN || 60),
@@ -134,6 +144,11 @@ export const POST = withApi(async (req: Request) => {
       },
       req,
     });
+
+    // Store idempotent success if reserved
+    if (reserve.mode === "reserved") {
+      await persistIdempotentSuccess(reserve.fp, 201, created);
+    }
 
     return ok(created, 201, req);
   } catch (e) {

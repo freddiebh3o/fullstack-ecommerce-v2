@@ -8,6 +8,21 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model IdempotencyKey {
+  id         String   @id @default(uuid())
+  key        String
+  userId     String?
+  tenantId   String?
+  method     String
+  path       String
+  statusCode Int?
+  response   Json?
+  createdAt  DateTime @default(now())
+
+  @@unique([key, method, path, userId, tenantId])
+  @@index([createdAt])
+}
+
 model Domain {
   id        String  @id @default(uuid())
   tenantId  String
