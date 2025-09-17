@@ -10,13 +10,15 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    include: ["tests/**/*.spec.ts"],   // adjust if your tests live elsewhere
-    // You can also add setupFiles if you need DB bootstrap/cleanup
-    // setupFiles: ["tests/setup.ts"],
+    include: ["tests/**/*.spec.ts"],
+    setupFiles: ["./tests/setup.ts"],
+    sequence: { concurrent: false },       // no concurrent tests within a file
+    pool: "threads",                       // default, but explicit is nice
+    poolOptions: {
+      threads: { singleThread: true },     // ✅ run all tests in a single worker
+    },
   },
   resolve: {
-    alias: {
-      "@": resolve(__dirname, "./src"),
-    },
+    alias: { "@": resolve(__dirname, "./src") },
   },
 });

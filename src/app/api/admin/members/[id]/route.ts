@@ -1,3 +1,4 @@
+// src/app/api/admin/members/[id]/route.ts
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth/session";
@@ -5,18 +6,21 @@ import { requireCurrentTenantId } from "@/lib/core/tenant";
 import { prismaForTenant } from "@/lib/db/tenant-scoped";
 import { systemDb } from "@/lib/db/system";
 import { ok, fail } from "@/lib/utils/http";
+import { writeAudit, diffForUpdate } from "@/lib/core/audit";
+import { withApi } from "@/lib/utils/with-api";
 
-// input: at least one cap must be present
 const UpdateCapsInput = z.object({
-  caps: z.object({
-    isOwner: z.boolean().optional(),
-    canManageMembers: z.boolean().optional(),
-    canManageProducts: z.boolean().optional(),
-    canViewProducts: z.boolean().optional(),
-  }).refine(v => Object.keys(v).length > 0, { message: "No changes provided" }),
+  caps: z
+    .object({
+      isOwner: z.boolean().optional(),
+      canManageMembers: z.boolean().optional(),
+      canManageProducts: z.boolean().optional(),
+      canViewProducts: z.boolean().optional(),
+    })
+    .refine((v) => Object.keys(v).length > 0, { message: "No changes provided" }),
 });
 
-export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
+export const PATCH = withApi(async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
   const { id } = await ctx.params;
   const session = await requireSession();
   const tenantId = await requireCurrentTenantId();
@@ -41,10 +45,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const caps = parsed.data.caps;
 
   if ("isOwner" in caps && caps.isOwner !== undefined && !me.isOwner) {
-    return NextResponse.json(
-      { ok: false, error: "Only owners can modify isOwner" },
-      { status: 403 }
-    );
+    return NextResponse.json({ ok: false, error: "Only owners can modify isOwner" }, { status: 403 });
   }
 
   const db = prismaForTenant(tenantId);
@@ -52,21 +53,28 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   // Ensure target exists in THIS tenant
   const target = await db.membership.findFirst({
     where: { id },
-    select: { id: true, userId: true, isOwner: true },
+    select: { id: true, isOwner: true },
   });
-  if (!target) {
-    return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
-  }
+  if (!target) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
 
-  // Last-owner guard: cannot demote the final owner
-  if (target.isOwner && caps.isOwner === false) {
-    const ownerCount = await db.membership.count({ where: { isOwner: true } });
-    if (ownerCount <= 1) {
+  // If removing isOwner, ensure at least one owner remains
+  if (caps.isOwner === false) {
+    const owners = await db.membership.count({ where: { isOwner: true } });
+    if (owners <= 1) {
       return NextResponse.json(
         { ok: false, error: "Cannot remove the last owner" },
         { status: 409 }
       );
     }
+  }
+
+  // Read BEFORE state
+  const before = await db.membership.findFirst({
+    where: { id },
+    include: { user: { select: { id: true, email: true, name: true } } },
+  });
+  if (!before) {
+    return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
   }
 
   // Perform update (tenant guard ensures scoping)
@@ -80,10 +88,35 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     include: { user: { select: { id: true, email: true, name: true } } },
   });
 
+  // Audit
+  const changedKeys = Object.keys(caps) as (keyof typeof caps)[];
+  await writeAudit(db as any, {
+    tenantId,
+    userId: (session.user as any).id ?? null,
+    action: "MEMBERSHIP_UPDATE",
+    entityType: "Membership",
+    entityId: id,
+    diff: {
+      before: {
+        isOwner: before.isOwner,
+        canManageMembers: before.canManageMembers,
+        canManageProducts: before.canManageProducts,
+        canViewProducts: before.canViewProducts,
+      },
+      after: {
+        isOwner: updated!.isOwner,
+        canManageMembers: updated!.canManageMembers,
+        canManageProducts: updated!.canManageProducts,
+        canViewProducts: updated!.canViewProducts,
+      },
+    },
+    req,
+  });
+
   const data = {
     membershipId: updated!.id,
     userId: updated!.userId,
-    user: updated!.user,
+    user: updated!.user!,
     caps: {
       isOwner: updated!.isOwner,
       canManageMembers: updated!.canManageMembers,
@@ -94,9 +127,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   };
 
   return NextResponse.json({ ok: true, data });
-}
+});
 
-export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }> }) {
+export const DELETE = withApi(async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
   const { id } = await ctx.params;
 
   const session = await requireSession();
@@ -120,55 +153,56 @@ export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }
 
   const db = prismaForTenant(tenantId);
 
-  // Ensure target exists in THIS tenant (tenant guard scopes this)
-  const target = await db.membership.findFirst({
+  // Read BEFORE state
+  const before = await db.membership.findFirst({
     where: { id },
-    select: { id: true, userId: true, isOwner: true },
+    include: { user: { select: { id: true, email: true, name: true } } },
   });
-  if (!target) {
-    return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
-  }
 
-  // Owners can remove owners; non-owners cannot
-  if (target.isOwner && !me.isOwner) {
-    return NextResponse.json(
-      { ok: false, error: "Only owners can remove owners" },
-      { status: 403 }
-    );
-  }
-
-  // Last-owner guard
-  if (target.isOwner) {
-    const ownerCount = await db.membership.count({ where: { isOwner: true } });
-    if (ownerCount <= 1) {
-      return NextResponse.json(
-        { ok: false, error: "Cannot remove the last owner" },
-        { status: 409 }
-      );
-    }
-  }
-
-  // Perform deletion safely
+  // Safe delete
   const res = await db.membership.deleteMany({ where: { id } });
   if (res.count !== 1) {
     return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
   }
 
-  // (Optional) TODO: write an auditLog entry here
+  // Audit
+  await writeAudit(db as any, {
+    tenantId,
+    userId: (session.user as any).id ?? null,
+    action: "MEMBERSHIP_DELETE",
+    entityType: "Membership",
+    entityId: id,
+    diff: before
+      ? {
+          before: {
+            id: before.id,
+            userId: before.userId,
+            caps: {
+              isOwner: before.isOwner,
+              canManageMembers: before.canManageMembers,
+              canManageProducts: before.canManageProducts,
+              canViewProducts: before.canViewProducts,
+            },
+          },
+        }
+      : undefined,
+    req,
+  });
 
   return NextResponse.json({ ok: true });
-}
+});
 
-export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+export const GET = withApi(async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
   const { id } = await ctx.params;
   const session = await requireSession();
   const tenantId = await requireCurrentTenantId();
 
+  // Capability: must manage products
   const me = await systemDb.membership.findFirst({
     where: { userId: (session.user as any).id, tenantId },
-    select: { canManageMembers: true },
+    select: { canManageProducts: true },
   });
-  if (!me || !me.canManageMembers) return fail(403, "Forbidden");
+  if (!me || !me.canManageProducts) return fail(403, "Forbidden");
 
   const db = prismaForTenant(tenantId);
   const m = await db.membership.findFirst({
@@ -189,7 +223,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     },
     createdAt: m.createdAt,
   });
-}
+});
 
 export async function PUT() {
   return NextResponse.json({ ok: false, error: "Method Not Allowed" }, { status: 405 });

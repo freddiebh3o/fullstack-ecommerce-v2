@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+// src/app/api/admin/products/route.ts
 import { requireSession } from "@/lib/auth/session";
 import { requireCurrentTenantId } from "@/lib/core/tenant";
 import { prismaForTenant } from "@/lib/db/tenant-scoped";
@@ -6,8 +6,10 @@ import { systemDb } from "@/lib/db/system";
 import { ok, fail } from "@/lib/utils/http";
 import { isUniqueViolation } from "@/lib/utils/prisma-errors";
 import { ProductCreateSchema } from "@/lib/core/schemas";
+import { writeAudit } from "@/lib/core/audit";
+import { withApi } from "@/lib/utils/with-api";
 
-export async function GET(req: Request) {
+export const GET = withApi(async (req: Request) => {
   const session = await requireSession();
   const tenantId = await requireCurrentTenantId();
 
@@ -18,41 +20,41 @@ export async function GET(req: Request) {
   if (!me || !me.canManageProducts) return fail(403, "Forbidden");
 
   const { searchParams } = new URL(req.url);
-  const q = searchParams.get("q")?.trim() || "";
-  const active = searchParams.get("active");   // "true" | "false" | null
-  const limit = Math.max(1, Math.min(50, Number(searchParams.get("limit") ?? 20)));
-  const cursor = searchParams.get("cursor") || null;
+  const q = searchParams.get("q")?.trim() || undefined;
+  const limit = Math.min(Math.max(Number(searchParams.get("limit") ?? 25), 1), 100);
+  const cursor = searchParams.get("cursor") || undefined;
 
   const db = prismaForTenant(tenantId);
-
-  const where: any = {};
-  if (q) {
-    where.OR = [
-      { sku: { contains: q, mode: "insensitive" } },
-      { name: { contains: q, mode: "insensitive" } },
-      { description: { contains: q, mode: "insensitive" } },
-    ];
-  }
-  if (active === "true") where.isActive = true;
-  if (active === "false") where.isActive = false;
-
   const items = await db.product.findMany({
-    where,
+    where: q
+      ? {
+          OR: [
+            { name: { contains: q, mode: "insensitive" } },
+            { sku: { contains: q, mode: "insensitive" } },
+          ],
+        }
+      : undefined,
     take: limit,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     orderBy: { createdAt: "desc" },
     select: {
-      id: true, sku: true, name: true, description: true,
-      priceInPence: true, currency: true, isActive: true,
-      createdAt: true, updatedAt: true,
-    }
+      id: true,
+      sku: true,
+      name: true,
+      description: true,
+      priceInPence: true,
+      currency: true,
+      isActive: true,
+      createdAt: true,
+      updatedAt: true,
+    },
   });
 
   const nextCursor = items.length === limit ? items[items.length - 1].id : null;
   return ok({ items, nextCursor });
-}
+});
 
-export async function POST(req: Request) {
+export const POST = withApi(async (req: Request) => {
   const session = await requireSession();
   const tenantId = await requireCurrentTenantId();
 
@@ -73,15 +75,47 @@ export async function POST(req: Request) {
   try {
     const created = await db.product.create({
       data: {
-        ...data,
-        tenant: { connect: { id: tenantId } }, // type-safe, guard also normalizes
+        tenant: { connect: { id: tenantId } },
+        sku: data.sku,
+        name: data.name,
+        description: data.description ?? null,
+        priceInPence: data.priceInPence,
+        currency: data.currency ?? "GBP",
+        isActive: data.isActive ?? true,
       },
       select: {
-        id: true, sku: true, name: true, description: true,
-        priceInPence: true, currency: true, isActive: true,
-        createdAt: true, updatedAt: true,
-      }
+        id: true,
+        sku: true,
+        name: true,
+        description: true,
+        priceInPence: true,
+        currency: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
+
+    // Audit: product created
+    await writeAudit(db as any, {
+      tenantId,
+      userId: (session.user as any).id ?? null,
+      action: "PRODUCT_CREATE",
+      entityType: "Product",
+      entityId: created.id,
+      diff: {
+        after: {
+          id: created.id,
+          sku: created.sku,
+          name: created.name,
+          priceInPence: created.priceInPence,
+          currency: created.currency,
+          isActive: created.isActive,
+        },
+      },
+      req,
+    });
+
     return ok(created, 201);
   } catch (e) {
     if (isUniqueViolation(e, ["tenantId", "sku", "tenantId_sku", "Product_tenantId_sku_key"])) {
@@ -89,4 +123,4 @@ export async function POST(req: Request) {
     }
     throw e;
   }
-}
+});

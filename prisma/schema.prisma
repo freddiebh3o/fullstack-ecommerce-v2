@@ -43,6 +43,7 @@ model Tenant {
   memberships Membership[]
   products    Product[]
   auditLogs   AuditLog[]
+  domain Domain[]
 
   @@index([slug])
 }
