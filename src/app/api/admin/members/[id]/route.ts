@@ -10,7 +10,10 @@ import { withApi } from "@/lib/utils/with-api";
 import { loggerForRequest } from "@/lib/log/log";
 import { rateLimitFixedWindow } from "@/lib/security/rate-limit";
 import { reserveIdempotency, persistIdempotentSuccess } from "@/lib/security/idempotency";
+import { NextResponse } from "next/server";
+
 const UpdateCapsInput = z.object({
+  expectedVersion: z.number().int().positive(),
   caps: z
     .object({
       isOwner: z.boolean().optional(),
@@ -65,9 +68,12 @@ export const PATCH = withApi(async (req: Request, { params }: { params: Promise<
   const body = await req.json().catch(() => null);
   const parsed = UpdateCapsInput.safeParse(body);
   if (!parsed.success) {
-    return fail(422, "Invalid input", { issues: parsed.error.flatten() }, req);
+    return NextResponse.json(
+      { ok: false, error: "Invalid input", issues: parsed.error.flatten() },
+      { status: 422 }
+    );
   }
-  const caps = parsed.data.caps;
+  const { expectedVersion, caps } = parsed.data;
 
   if ("isOwner" in caps && caps.isOwner !== undefined && !me.isOwner) {
     return fail(403, "Only owners can modify isOwner", undefined, req);
@@ -75,7 +81,7 @@ export const PATCH = withApi(async (req: Request, { params }: { params: Promise<
 
   const db = prismaForTenant(tenantId);
 
-  // Ensure target exists in THIS tenant
+  // Ensure target exists in THIS tenant (also gives us current version & user for audit)
   const before = await db.membership.findFirst({
     where: { id },
     include: { user: { select: { id: true, email: true, name: true } } },
@@ -90,9 +96,21 @@ export const PATCH = withApi(async (req: Request, { params }: { params: Promise<
     }
   }
 
-  // Update (tenant guard ensures scoping)
-  const res = await db.membership.updateMany({ where: { id }, data: caps });
-  if (res.count !== 1) return fail(404, "Not found", undefined, req);
+  // === OCC update: must match expectedVersion ===
+  const updateRes = await db.membership.updateMany({
+    where: { id, version: expectedVersion },
+    data: { ...caps, version: { increment: 1 } },
+  });
+
+  if (updateRes.count !== 1) {
+    // Distinguish missing vs stale
+    const exists = await db.membership.findFirst({
+      where: { id },
+      select: { version: true },
+    });
+    if (!exists) return fail(404, "Not found", undefined, req);
+    return fail(409, "Version conflict", { expectedVersion, currentVersion: exists.version }, req);
+  }
 
   const updated = await db.membership.findFirst({
     where: { id },
@@ -109,7 +127,8 @@ export const PATCH = withApi(async (req: Request, { params }: { params: Promise<
       canManageProducts: updated!.canManageProducts,
       canViewProducts: updated!.canViewProducts,
     },
-    updatedAt: updated!.createdAt, // membership has only createdAt in v1
+    version: updated!.version,
+    updatedAt: updated!.updatedAt,
   };
 
   // Idempotent success (200)
@@ -130,12 +149,14 @@ export const PATCH = withApi(async (req: Request, { params }: { params: Promise<
         canManageMembers: before.canManageMembers,
         canManageProducts: before.canManageProducts,
         canViewProducts: before.canViewProducts,
+        version: before.version,
       },
       after: {
         isOwner: updated!.isOwner,
         canManageMembers: updated!.canManageMembers,
         canManageProducts: updated!.canManageProducts,
         canViewProducts: updated!.canViewProducts,
+        version: updated!.version,
       },
     },
     req,
@@ -205,14 +226,25 @@ export const GET = withApi(async (req: Request, ctx: { params: Promise<{ id: str
 
   const me = await systemDb.membership.findFirst({
     where: { userId: (session.user as any).id, tenantId },
-    select: { canManageProducts: true },
+    select: { canManageMembers: true },
   });
-  if (!me || !me.canManageProducts) return fail(403, "Forbidden", undefined, req);
+  if (!me || !me.canManageMembers) return fail(403, "Forbidden", undefined, req);
 
   const db = prismaForTenant(tenantId);
   const m = await db.membership.findFirst({
     where: { id },
-    include: { user: { select: { id: true, email: true, name: true } } },
+    select: {
+      id: true,
+      userId: true,
+      isOwner: true,
+      canManageMembers: true,
+      canManageProducts: true,
+      canViewProducts: true,
+      createdAt: true,
+      updatedAt: true, // ← added
+      version: true,   // ← added
+      user: { select: { id: true, email: true, name: true } },
+    },
   });
   if (!m) return fail(404, "Not found", undefined, req);
 
@@ -228,6 +260,8 @@ export const GET = withApi(async (req: Request, ctx: { params: Promise<{ id: str
         canViewProducts: m.canViewProducts,
       },
       createdAt: m.createdAt,
+      updatedAt: m.updatedAt, // ← added
+      version: m.version,     // ← added
     },
     200,
     req

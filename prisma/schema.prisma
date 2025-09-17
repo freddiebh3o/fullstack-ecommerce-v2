@@ -1,126 +1,31 @@
-// prisma/schema.prisma
-generator client {
-  provider = "prisma-client-js"
-}
+// src/lib/validation/product.ts
+import { z } from "zod";
 
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
+export const ProductCreateInput = z.object({
+  sku: z.string().min(1, "SKU is required"),
+  name: z.string().min(1, "Name is required"),
+  description: z.string().nullable().optional(),
+  priceInPence: z.number().int().nonnegative(),
+  currency: z.string().length(3).default("GBP").optional(),
+  isActive: z.boolean().default(true).optional(),
+});
 
-model IdempotencyKey {
-  id         String   @id @default(uuid())
-  key        String
-  userId     String?
-  tenantId   String?
-  method     String
-  path       String
-  statusCode Int?
-  response   Json?
-  createdAt  DateTime @default(now())
+export const ProductUpdateInput = z
+  .object({
+    expectedVersion: z.number().int().positive(),
 
-  @@unique([key, method, path, userId, tenantId])
-  @@index([createdAt])
-}
+    name: z.string().trim().min(1).max(200).optional(),
+    description: z.string().trim().max(1000).nullable().optional(),
+    priceInPence: z.number().int().min(0).optional(),
+    // Keep len(3) string for now; we can tighten to enum in Phase 9 if you like
+    currency: z.string().trim().length(3).toUpperCase().optional(),
+    isActive: z.boolean().optional(),
+  })
+  .refine((data) => {
+    const { expectedVersion, ...rest } = data as Record<string, unknown>;
+    // At least one field besides expectedVersion must be provided
+    return Object.values(rest).some((v) => v !== undefined);
+  }, { message: "No changes provided" });
 
-model Domain {
-  id        String  @id @default(uuid())
-  tenantId  String
-  host      String  @unique   // e.g. shop.acme.com
-  isPrimary Boolean @default(false)
-  createdAt DateTime @default(now())
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-}
-
-model User {
-  id           String      @id @default(uuid())
-  email        String      @unique
-  name         String?     // optional display name
-  passwordHash String
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-
-  memberships  Membership[]
-  auditLogs    AuditLog[]
-
-  @@index([email])
-}
-
-model Tenant {
-  id         String        @id @default(uuid())
-  slug       String        @unique
-  name       String
-  isActive   Boolean       @default(true)
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
-
-  memberships Membership[]
-  products    Product[]
-  auditLogs   AuditLog[]
-  domain Domain[]
-
-  @@index([slug])
-}
-
-model Membership {
-  id         String   @id @default(uuid())
-  userId     String
-  tenantId   String
-
-  // v1 "boolean capabilities"
-  isOwner            Boolean @default(false)
-  canManageMembers   Boolean @default(false)
-  canManageProducts  Boolean @default(false)
-  canViewProducts    Boolean @default(true)
-
-  createdAt  DateTime @default(now())
-
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, tenantId]) // one membership per (user, tenant)
-  @@index([tenantId])
-  @@index([userId])
-}
-
-model Product {
-  id            String   @id @default(uuid())
-  tenantId      String
-  sku           String
-  name          String
-  description   String?
-  /// price in minor units (pence for GBP)
-  priceInPence  Int
-  /// ISO 4217-like code; default GBP
-  currency      String   @default("GBP")
-  isActive      Boolean  @default(true)
-
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, sku])
-  @@index([tenantId, isActive])
-}
-
-model AuditLog {
-  id         String    @id @default(uuid())
-  tenantId   String?   // some events might be global (e.g., login before selecting tenant)
-  userId     String?
-  action     String    // e.g., "PRODUCT_CREATE", "MEMBERSHIP_UPDATE"
-  entityType String?   // e.g., "Product", "Membership"
-  entityId   String?   // id string of the entity
-  diff       Json?     // optional structured changes
-  ip         String?
-  userAgent  String?
-
-  createdAt  DateTime  @default(now())
-
-  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
-
-  @@index([tenantId, createdAt])
-  @@index([userId, createdAt])
-}
+export type ProductCreateInput = z.infer<typeof ProductCreateInput>;
+export type ProductUpdateInput = z.infer<typeof ProductUpdateInput>;

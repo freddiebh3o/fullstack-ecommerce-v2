@@ -50,6 +50,7 @@ export const GET = withApi(async (req: Request) => {
       isActive: true,
       createdAt: true,
       updatedAt: true,
+      version: true,
     },
   });
 
@@ -105,7 +106,7 @@ export const POST = withApi(async (req: Request) => {
   try {
     const created = await db.product.create({
       data: {
-        tenant: { connect: { id: tenantId } }, // satisfy relational create
+        tenant: { connect: { id: tenantId } },
         sku: data.sku,
         name: data.name,
         description: data.description ?? null,
@@ -123,6 +124,7 @@ export const POST = withApi(async (req: Request) => {
         isActive: true,
         createdAt: true,
         updatedAt: true,
+        version: true, // ← added
       },
     });
 
@@ -145,7 +147,6 @@ export const POST = withApi(async (req: Request) => {
       req,
     });
 
-    // Store idempotent success if reserved
     if (reserve.mode === "reserved") {
       await persistIdempotentSuccess(reserve.fp, 201, created);
     }

@@ -10,6 +10,7 @@ import { withApi } from "@/lib/utils/with-api";
 import { loggerForRequest } from "@/lib/log/log";
 import { rateLimitFixedWindow } from "@/lib/security/rate-limit";
 import { reserveIdempotency, persistIdempotentSuccess } from "@/lib/security/idempotency";
+import { NextResponse } from "next/server";
 
 export const PATCH = withApi(async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   const session = await requireSession();
@@ -19,13 +20,10 @@ export const PATCH = withApi(async (req: Request, { params }: { params: Promise<
   // Idempotency
   const userId = (session.user as any).id ?? null;
   const reserve = await reserveIdempotency(req, userId, tenantId);
-  if (reserve.mode === "replay") {
-    return ok(reserve.response, 200, req);
-  }
-  if (reserve.mode === "in_progress") {
-    return fail(409, "Request already in progress", undefined, req);
-  }
+  if (reserve.mode === "replay") return ok(reserve.response, 200, req);
+  if (reserve.mode === "in_progress") return fail(409, "Request already in progress", undefined, req);
 
+  // Per-user mutation cap
   const { log } = loggerForRequest(req);
   const uStats = rateLimitFixedWindow({
     key: `mut:user:${userId}`,
@@ -41,60 +39,71 @@ export const PATCH = withApi(async (req: Request, { params }: { params: Promise<
     return res;
   }
 
-
+  // Capability
   const membership = await systemDb.membership.findFirst({
     where: { userId: (session.user as any).id, tenantId },
     select: { canManageProducts: true },
   });
   if (!membership || !membership.canManageProducts) return fail(403, "Forbidden", undefined, req);
 
+  // Validate body
   const body = await req.json().catch(() => null);
   const parsed = ProductUpdateSchema.safeParse(body);
   if (!parsed.success) {
-    return fail(422, "Invalid input", { issues: parsed.error.flatten() }, req);
+    return NextResponse.json({ ok: false, error: "Invalid input", issues: parsed.error.flatten() }, { status: 422 });
   }
+  const { expectedVersion, ...changes } = parsed.data as any;
 
   const db = prismaForTenant(tenantId);
 
+  // Read BEFORE (for audit + 404 vs 409 disambiguation)
   const before = await db.product.findFirst({
     where: { id },
     select: {
-      id: true,
-      sku: true,
-      name: true,
-      description: true,
-      priceInPence: true,
-      currency: true,
-      isActive: true,
-      createdAt: true,
-      updatedAt: true,
+      id: true, sku: true, name: true, description: true,
+      priceInPence: true, currency: true, isActive: true,
+      createdAt: true, updatedAt: true, version: true,
     },
   });
   if (!before) return fail(404, "Not found", undefined, req);
 
-  const res = await db.product.updateMany({ where: { id }, data: parsed.data });
-  if (res.count !== 1) return fail(404, "Not found", undefined, req);
+  // OCC update: match expectedVersion and bump version atomically
+  const res = await db.product.updateMany({
+    where: { id, version: expectedVersion },
+    data: { ...changes, version: { increment: 1 } },
+  });
+  
+  if (res.count !== 1) {
+    // Distinguish missing vs stale version for better client UX
+    const exists = await db.product.findFirst({
+      where: { id },
+      select: { version: true },
+    });
+    if (!exists) return fail(404, "Not found", undefined, req);
+    return fail(409, "Version conflict", { expectedVersion, currentVersion: exists.version }, req);
+  }
 
+  // Read AFTER
   const updated = await db.product.findFirst({
     where: { id },
     select: {
-      id: true,
-      sku: true,
-      name: true,
-      description: true,
-      priceInPence: true,
-      currency: true,
-      isActive: true,
-      createdAt: true,
-      updatedAt: true,
+      id: true, sku: true, name: true, description: true,
+      priceInPence: true, currency: true, isActive: true,
+      createdAt: true, updatedAt: true, version: true,
     },
   });
 
+  // Idempotent success
   if (reserve.mode === "reserved") {
     await persistIdempotentSuccess(reserve.fp, 200, updated);
   }
 
-  const changedKeys = Object.keys(parsed.data) as (keyof typeof updated)[];
+  // Build changed keys for the audit diff and include version if it bumped
+  const changedKeys = [
+    ...Object.keys(changes),
+    ...(before.version !== updated!.version ? ["version"] : []),
+  ] as (keyof typeof updated)[];
+  
   await writeAudit(db as any, {
     tenantId,
     userId: (session.user as any).id ?? null,
@@ -104,10 +113,10 @@ export const PATCH = withApi(async (req: Request, { params }: { params: Promise<
     diff: diffForUpdate(before as any, updated as any, changedKeys as any),
     req,
   });
-  
 
   return ok(updated, 200, req);
 });
+
 
 export const DELETE = withApi(async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   const { id } = await params;
@@ -182,6 +191,7 @@ export const GET = withApi(async (req: Request, { params }: { params: Promise<{ 
       isActive: true,
       createdAt: true,
       updatedAt: true,
+      version: true,
     },
   });
   if (!product) return fail(404, "Not found", undefined, req);

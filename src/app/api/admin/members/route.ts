@@ -17,7 +17,6 @@ export const GET = withApi(async (req: Request) => {
   const session = await requireSession();
   const tenantId = await requireCurrentTenantId();
 
-  // Must be able to manage members (viewing the list)
   const me = await systemDb.membership.findFirst({
     where: { userId: (session.user as any).id, tenantId },
     select: { canManageMembers: true },
@@ -29,7 +28,18 @@ export const GET = withApi(async (req: Request) => {
   const db = prismaForTenant(tenantId);
   const members = await db.membership.findMany({
     orderBy: { createdAt: "asc" },
-    include: { user: { select: { id: true, email: true, name: true } } },
+    select: {
+      id: true,
+      userId: true,
+      isOwner: true,
+      canManageMembers: true,
+      canManageProducts: true,
+      canViewProducts: true,
+      createdAt: true,
+      updatedAt: true,
+      version: true,
+      user: { select: { id: true, email: true, name: true } },
+    },
   });
 
   const data = members.map((m) => ({
@@ -43,6 +53,8 @@ export const GET = withApi(async (req: Request) => {
       canViewProducts: m.canViewProducts,
     },
     createdAt: m.createdAt,
+    updatedAt: m.updatedAt,
+    version: m.version,
   }));
 
   return ok({ data }, 200, req);
@@ -67,7 +79,6 @@ export const POST = withApi(async (req: Request) => {
 
   const userId = (session.user as any).id ?? null;
 
-  // Idempotency reservation / replay
   const reserve = await reserveIdempotency(req, userId, tenantId);
   if (reserve.mode === "replay") {
     return ok(reserve.response, 201, req);
@@ -76,7 +87,6 @@ export const POST = withApi(async (req: Request) => {
     return fail(409, "Request already in progress", undefined, req);
   }
 
-  // Per-user mutation rate limit
   const { log, requestId } = loggerForRequest(req);
   const uStats = rateLimitFixedWindow({
     key: `mut:user:${userId}`,
@@ -93,7 +103,6 @@ export const POST = withApi(async (req: Request) => {
     return res;
   }
 
-  // Capability: must manage members; only owners can set isOwner at creation
   const me = await systemDb.membership.findFirst({
     where: { userId: (session.user as any).id, tenantId },
     select: { isOwner: true, canManageMembers: true },
@@ -113,7 +122,6 @@ export const POST = withApi(async (req: Request) => {
     return fail(403, "Only owners can set isOwner", undefined, req);
   }
 
-  // Attach existing user by email
   const user = await systemDb.user.findUnique({
     where: { email },
     select: { id: true, email: true, name: true },
@@ -136,6 +144,8 @@ export const POST = withApi(async (req: Request) => {
         id: true,
         userId: true,
         createdAt: true,
+        updatedAt: true,
+        version: true,
         isOwner: true,
         canManageMembers: true,
         canManageProducts: true,
@@ -143,7 +153,6 @@ export const POST = withApi(async (req: Request) => {
       },
     });
 
-    // Audit
     await writeAudit(systemDb as any, {
       tenantId,
       userId: (session.user as any).id ?? null,
@@ -168,7 +177,7 @@ export const POST = withApi(async (req: Request) => {
     const apiData = {
       membershipId: created.id,
       userId: user.id,
-      user, // { id, email, name }
+      user,
       caps: {
         isOwner: created.isOwner,
         canManageMembers: created.canManageMembers,
@@ -176,6 +185,8 @@ export const POST = withApi(async (req: Request) => {
         canViewProducts: created.canViewProducts,
       },
       createdAt: created.createdAt,
+      updatedAt: created.updatedAt,
+      version: created.version,
     };
 
     if (reserve.mode === "reserved") {
