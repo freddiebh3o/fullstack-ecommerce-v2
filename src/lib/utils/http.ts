@@ -1,13 +1,58 @@
+// src/lib/utils/http.ts
 import { NextResponse } from "next/server";
+import { getOrCreateRequestId } from "@/lib/log/log";
 
-type OkBody<T> = { ok: true; data: T };
-type ErrBody<E extends string = string> = { ok: false; error: E } & Record<string, unknown>;
+type Extra = Record<string, unknown> | undefined;
 
-export function ok<T>(data: T, init?: number | ResponseInit) {
-  const resInit = typeof init === "number" ? { status: init } : init;
-  return NextResponse.json<OkBody<T>>({ ok: true, data }, resInit);
+// Overloads (for TS ergonomics)
+// ok(data)
+// ok(data, status, req?)
+// ok(data, init, req?)
+export function ok<T>(data: T): NextResponse;
+export function ok<T>(data: T, status: number, req?: Request): NextResponse;
+export function ok<T>(data: T, init: ResponseInit, req?: Request): NextResponse;
+export function ok<T>(
+  data: T,
+  statusOrInit?: number | ResponseInit,
+  req?: Request
+) {
+  const body: Record<string, unknown> = { ok: true, data };
+  let requestId: string | undefined;
+
+  if (req) {
+    requestId = getOrCreateRequestId(req.headers);
+    body.requestId = requestId;
+  }
+
+  let status = 200;
+  let init: ResponseInit | undefined;
+
+  if (typeof statusOrInit === "number") {
+    status = statusOrInit;
+  } else if (statusOrInit && typeof statusOrInit === "object") {
+    init = statusOrInit;
+  }
+
+  const res = NextResponse.json(body, { status, ...(init ?? {}) });
+  if (requestId) res.headers.set("x-request-id", requestId);
+  return res;
 }
 
-export function fail<E extends string>(status: number, error: E, extra?: Record<string, unknown>) {
-  return NextResponse.json<ErrBody<E>>({ ok: false, error, ...(extra ?? {}) }, { status });
+export function fail(
+  status: number,
+  error: string,
+  extra?: Extra,
+  req?: Request
+) {
+  const body: Record<string, unknown> = { ok: false, error, ...(extra ?? {}) };
+  let requestId: string | undefined;
+
+  if (req) {
+    requestId = getOrCreateRequestId(req.headers);
+    body.requestId = requestId;
+  }
+
+  const res = NextResponse.json(body, { status });
+  if (requestId) res.headers.set("x-request-id", requestId);
+  return res;
 }

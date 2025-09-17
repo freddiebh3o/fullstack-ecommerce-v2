@@ -17,7 +17,7 @@ export const GET = withApi(async (req: Request) => {
     where: { userId: (session.user as any).id, tenantId },
     select: { canManageProducts: true },
   });
-  if (!me || !me.canManageProducts) return fail(403, "Forbidden");
+  if (!me || !me.canManageProducts) return fail(403, "Forbidden", undefined, req);
 
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q")?.trim() || undefined;
@@ -51,7 +51,7 @@ export const GET = withApi(async (req: Request) => {
   });
 
   const nextCursor = items.length === limit ? items[items.length - 1].id : null;
-  return ok({ items, nextCursor });
+  return ok({ items, nextCursor }, 200, req);
 });
 
 export const POST = withApi(async (req: Request) => {
@@ -62,12 +62,12 @@ export const POST = withApi(async (req: Request) => {
     where: { userId: (session.user as any).id, tenantId },
     select: { canManageProducts: true },
   });
-  if (!me || !me.canManageProducts) return fail(403, "Forbidden");
+  if (!me || !me.canManageProducts) return fail(403, "Forbidden", undefined, req);
 
   const body = await req.json().catch(() => null);
   const parsed = ProductCreateSchema.safeParse(body);
   if (!parsed.success) {
-    return fail(422, "Invalid input", { issues: parsed.error.flatten() });
+    return fail(422, "Invalid input", { issues: parsed.error.flatten() }, req);
   }
   const data = parsed.data;
 
@@ -75,7 +75,7 @@ export const POST = withApi(async (req: Request) => {
   try {
     const created = await db.product.create({
       data: {
-        tenant: { connect: { id: tenantId } },
+        tenant: { connect: { id: tenantId } }, // satisfy relational create
         sku: data.sku,
         name: data.name,
         description: data.description ?? null,
@@ -96,7 +96,6 @@ export const POST = withApi(async (req: Request) => {
       },
     });
 
-    // Audit: product created
     await writeAudit(db as any, {
       tenantId,
       userId: (session.user as any).id ?? null,
@@ -116,10 +115,10 @@ export const POST = withApi(async (req: Request) => {
       req,
     });
 
-    return ok(created, 201);
+    return ok(created, 201, req);
   } catch (e) {
     if (isUniqueViolation(e, ["tenantId", "sku", "tenantId_sku", "Product_tenantId_sku_key"])) {
-      return fail(409, "SKU already exists for this tenant");
+      return fail(409, "SKU already exists for this tenant", undefined, req);
     }
     throw e;
   }

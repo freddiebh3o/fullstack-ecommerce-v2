@@ -1,10 +1,12 @@
 // src/app/api/me/tenants/route.ts
-import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/session";
 import { systemDb } from "@/lib/db/system";
+import { ok } from "@/lib/utils/http";
+import { withApi } from "@/lib/utils/with-api";
 
-export async function GET() {
+export const GET = withApi(async (req: Request) => {
   const session = await requireSession();
+
   const memberships = await systemDb.membership.findMany({
     where: { userId: (session.user as any).id },
     include: { tenant: true } as const,
@@ -23,5 +25,5 @@ export async function GET() {
     },
   }));
 
-  return NextResponse.json({ ok: true, data });
-}
+  return ok(data, 200, req);
+});

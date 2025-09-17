@@ -1,16 +1,17 @@
 // src/app/api/tenant/select/route.ts
-import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { requireSession } from "@/lib/auth/session";
 import { systemDb } from "@/lib/db/system";
 import { TENANT_COOKIE } from "@/lib/core/constants";
+import { ok, fail } from "@/lib/utils/http";
+import { withApi } from "@/lib/utils/with-api";
 
-export async function POST(req: Request) {
+export const POST = withApi(async (req: Request) => {
   const session = await requireSession();
   const { tenantId } = await req.json().catch(() => ({} as any));
 
   if (!tenantId) {
-    return NextResponse.json({ ok: false, error: "tenantId required" }, { status: 400 });
+    return fail(400, "tenantId required", undefined, req);
   }
 
   // Verify membership
@@ -18,7 +19,7 @@ export async function POST(req: Request) {
     where: { userId: (session.user as any).id, tenantId },
   });
   if (!membership) {
-    return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
+    return fail(403, "Forbidden", undefined, req);
   }
 
   // Set secure cookie
@@ -31,5 +32,5 @@ export async function POST(req: Request) {
     maxAge: 60 * 60 * 24 * 7, // 7 days
   });
 
-  return NextResponse.json({ ok: true });
-}
+  return ok({ selected: true }, 200, req);
+});

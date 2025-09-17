@@ -1,5 +1,5 @@
 // src/lib/core/audit.ts
-import { loggerForRequest } from "@/lib/log";
+import { loggerForRequest } from "@/lib/log/log";
 
 type AuditInput = {
   tenantId: string;

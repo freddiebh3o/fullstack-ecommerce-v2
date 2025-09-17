@@ -53,14 +53,11 @@ function matchesAllowed(urlStr: string | null, allowed: URL[]): boolean {
 
 export function verifyOriginStrict(req: Request): Check {
   const method = req.method.toUpperCase();
-  console.log("method1234", method);
   if (SAFE_METHODS.has(method)) return { ok: true };
 
   const allowed = parseAllowedOrigins();
   const origin = req.headers.get("origin");
-  console.log("origin1234", origin);
   const referer = req.headers.get("referer");
-  console.log("referer1234", referer);
   const ua = req.headers.get("user-agent") || "";
 
   // 1) If Origin present, it must match
@@ -85,7 +82,6 @@ export function verifyOriginStrict(req: Request): Check {
     (process.env.ALLOW_MISSING_ORIGIN || "").toLowerCase() === "true";
   if (allowMissing) return { ok: true };
 
-  console.log("allowMissing1234", allowMissing);
 
   if (allowMissing) return { ok: true };
 

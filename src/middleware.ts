@@ -1,10 +1,11 @@
 // src/middleware.ts
+// src/middleware.ts
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { verifyDoubleSubmit } from "@/lib/security/csrf";
 import { verifyOriginStrict } from "@/lib/security/origin";
 import { applySecurityHeaders } from "@/lib/security/headers";
-import { logger } from "@/lib/log";
+import { logger } from "@/lib/log/log";
 
 const SKIP_CSRF_FOR_PATHS = ["/api/security/csrf"];
 const SKIP_ALL_FOR_PREFIXES = ["/api/auth/"];
@@ -16,8 +17,20 @@ function shouldSkipCsrf(pathname: string) {
   return SKIP_CSRF_FOR_PATHS.includes(pathname);
 }
 
+// ✅ new: uniform deny response that sets both header + body requestId
+function denyJson(
+  req: NextRequest,
+  requestId: string,
+  status: number,
+  error: string
+) {
+  const res = NextResponse.json({ ok: false, error, requestId }, { status });
+  res.headers.set("x-request-id", requestId);
+  applySecurityHeaders(req, res);
+  return res;
+}
+
 export function middleware(req: NextRequest) {
-  // Correlate every request with a request id
   const existingId = req.headers.get("x-request-id") || req.headers.get("x-correlation-id");
   const requestId =
     existingId ||
@@ -46,11 +59,8 @@ export function middleware(req: NextRequest) {
         origin: req.headers.get("origin"),
         referer: req.headers.get("referer"),
       });
-      const deny = NextResponse.json({ ok: false, error: originCheck.error ?? "Invalid Origin" }, { status: 403 });
-      applySecurityHeaders(req, deny);
-      deny.headers.set("x-request-id", requestId);
-      return deny;
-1    }
+      return denyJson(req, requestId, 403, originCheck.error ?? "Invalid Origin");
+    }
   }
 
   // 2) CSRF (skip token endpoint)
@@ -65,10 +75,7 @@ export function middleware(req: NextRequest) {
         hasCookie: Boolean(req.cookies.get("csrf")),
         hasHeader: Boolean(req.headers.get("x-csrf-token")),
       });
-      const deny = NextResponse.json({ ok: false, error: csrfCheck.error ?? "CSRF failed" }, { status: 403 });
-      applySecurityHeaders(req, deny);
-      deny.headers.set("x-request-id", requestId);
-      return deny;
+      return denyJson(req, requestId, 403, csrfCheck.error ?? "CSRF failed");
     }
   }
 

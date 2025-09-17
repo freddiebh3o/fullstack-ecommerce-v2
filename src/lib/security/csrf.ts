@@ -1,5 +1,6 @@
 // src/lib/security/csrf.ts
 import { NextRequest, NextResponse } from "next/server";
+import { ok } from "@/lib/utils/http";
 
 const CSRF_COOKIE_NAME = process.env.CSRF_COOKIE_NAME ?? "csrf_token";
 const CSRF_HEADER_NAME = (process.env.CSRF_HEADER_NAME ?? "x-csrf-token").toLowerCase();
@@ -32,11 +33,11 @@ export function timingSafeEqual(a: string, b: string): boolean {
 
 export function setCsrfCookie(res: NextResponse, token: string) {
   res.cookies.set(CSRF_COOKIE_NAME, token, {
-    httpOnly: false,              // double-submit needs readable cookie
+    httpOnly: false, // double-submit needs readable cookie
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: 60 * 60,              // 1 hour
+    maxAge: 60 * 60, // 1 hour
   });
 }
 
@@ -64,9 +65,9 @@ export function verifyDoubleSubmit(req: NextRequest): { ok: boolean; error?: str
 }
 
 /** Issue token JSON + set cookie (used by /api/security/csrf) */
-export async function issueCsrfTokenResponse(): Promise<NextResponse> {
+export async function issueCsrfTokenResponse(req?: Request): Promise<NextResponse> {
   const token = generateCsrfToken();
-  const res = NextResponse.json({ ok: true, csrfToken: token });
+  const res = ok({ csrfToken: token }, 200, req);
   setCsrfCookie(res, token);
   return res;
 }

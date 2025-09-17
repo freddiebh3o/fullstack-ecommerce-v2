@@ -1,11 +1,11 @@
 // src/app/api/admin/members/route.ts
-import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/session";
 import { requireCurrentTenantId } from "@/lib/core/tenant";
 import { prismaForTenant } from "@/lib/db/tenant-scoped";
 import { systemDb } from "@/lib/db/system";
 import { z } from "zod";
 import { writeAudit } from "@/lib/core/audit";
+import { ok, fail } from "@/lib/utils/http";
 import { withApi } from "@/lib/utils/with-api";
 
 const CreateMemberInput = z.object({
@@ -28,9 +28,7 @@ export const GET = withApi(async (req: Request) => {
     where: { userId: (session.user as any).id, tenantId },
     select: { canManageMembers: true },
   });
-  if (!me || !me.canManageMembers) {
-    return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
-  }
+  if (!me || !me.canManageMembers) return fail(403, "Forbidden", undefined, req);
 
   const db = prismaForTenant(tenantId);
   const memberships = await db.membership.findMany({
@@ -40,51 +38,45 @@ export const GET = withApi(async (req: Request) => {
     },
   });
 
-  return NextResponse.json({
-    ok: true,
-    data: memberships.map((m) => ({
-      membershipId: m.id,
-      userId: m.userId,
-      user: m.user,
-      caps: {
-        isOwner: m.isOwner,
-        canManageMembers: m.canManageMembers,
-        canManageProducts: m.canManageProducts,
-        canViewProducts: m.canViewProducts,
-      },
-      createdAt: m.createdAt,
-    })),
-  });
+  return ok(
+    {
+      data: memberships.map((m) => ({
+        membershipId: m.id,
+        userId: m.userId,
+        user: m.user,
+        caps: {
+          isOwner: m.isOwner,
+          canManageMembers: m.canManageMembers,
+          canManageProducts: m.canManageProducts,
+          canViewProducts: m.canViewProducts,
+        },
+        createdAt: m.createdAt,
+      })),
+    },
+    200,
+    req
+  );
 });
 
 export const POST = withApi(async (req: Request) => {
   const session = await requireSession();
   const tenantId = await requireCurrentTenantId();
 
-  // Caller must manage members
   const me = await systemDb.membership.findFirst({
     where: { userId: (session.user as any).id, tenantId },
     select: { isOwner: true, canManageMembers: true },
   });
-  if (!me || !me.canManageMembers) {
-    return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
-  }
+  if (!me || !me.canManageMembers) return fail(403, "Forbidden", undefined, req);
 
   const body = await req.json().catch(() => null);
   const parsed = CreateMemberInput.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json(
-      { ok: false, error: "Invalid input", issues: parsed.error.flatten() },
-      { status: 422 }
-    );
+    return fail(422, "Invalid input", { issues: parsed.error.flatten() }, req);
   }
   const { email, caps } = parsed.data;
 
-  // target user must exist
   const user = await systemDb.user.findUnique({ where: { email } });
-  if (!user) {
-    return NextResponse.json({ ok: false, error: "User not found" }, { status: 404 });
-  }
+  if (!user) return fail(404, "User not found", undefined, req);
 
   const db = prismaForTenant(tenantId);
   const created = await db.membership.create({
@@ -111,7 +103,6 @@ export const POST = withApi(async (req: Request) => {
     createdAt: created.createdAt,
   };
 
-  // Audit: membership created
   await writeAudit(db as any, {
     tenantId,
     userId: (session.user as any).id ?? null,
@@ -133,10 +124,5 @@ export const POST = withApi(async (req: Request) => {
     req,
   });
 
-  return NextResponse.json({ ok: true, data }, { status: 201 });
+  return ok({ data }, 201, req);
 });
-
-// Optional: method guard so POST-only endpoints don’t silently accept others
-export async function PUT() {
-  return NextResponse.json({ ok: false, error: "Method Not Allowed" }, { status: 405 });
-}

@@ -1,6 +1,6 @@
 // src/lib/utils/with-api.ts
 import { NextResponse } from "next/server";
-import { loggerForRequest } from "@/lib/log";
+import { loggerForRequest } from "@/lib/log/log";
 
 // Overload: handlers without ctx
 export function withApi<TRes extends NextResponse = NextResponse>(

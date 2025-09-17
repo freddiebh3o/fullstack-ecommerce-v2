@@ -1,5 +1,7 @@
+// src/app/api/security/csrf/route.ts
 import { issueCsrfTokenResponse } from "@/lib/security/csrf";
+import { withApi } from "@/lib/utils/with-api";
 
-export async function GET() {
-  return issueCsrfTokenResponse();
-}
+export const GET = withApi(async (req: Request) => {
+  return issueCsrfTokenResponse(req);
+});
