@@ -182,6 +182,13 @@ export const DELETE = withApi(async (req: Request, ctx: { params: Promise<{ id: 
     include: { user: { select: { id: true, email: true, name: true } } },
   });
 
+  if (before?.isOwner) {
+    const owners = await db.membership.count({ where: { isOwner: true } });
+    if (owners <= 1) {
+      return fail(409, "Cannot remove the last owner", undefined, req);
+    }
+  }
+
   const res = await db.membership.deleteMany({ where: { id } });
   if (res.count !== 1) return fail(404, "Not found", undefined, req);
 

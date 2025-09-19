@@ -1,41 +1,6 @@
-// tests/tenant-guard.spec.ts
+// tests/integration/prisma/tenant-guard.spec.ts
 import { describe, test, expect } from "vitest";
-import { systemDb } from "@/lib/db/system";
-import { prismaForTenant } from "@/lib/db/tenant-scoped";
-
-const sys = systemDb;  
-const uniq = () => Math.random().toString(36).slice(2, 10);
-
-async function mkUser(email: string) {
-  return sys.user.upsert({ where: { email }, create: { email, passwordHash: "x" }, update: {} });
-}
-async function mkTenant(slug: string, name: string) {
-  return sys.tenant.upsert({ where: { slug }, create: { slug, name }, update: { name } });
-}
-async function member(
-  userId: string,
-  tenantId: string,
-  caps: Partial<{
-    isOwner: boolean;
-    canManageMembers: boolean;
-    canManageProducts: boolean;
-    canViewProducts: boolean;
-  }>
-) {
-  return sys.membership.upsert({
-    where: { userId_tenantId: { userId, tenantId } },
-    create: { userId, tenantId, ...caps },
-    update: { ...caps },
-  });
-}
-
-async function mkProduct(tenantId: string, sku: string, name: string) {
-  return systemDb.product.upsert({
-    where: { tenantId_sku: { tenantId, sku } },
-    create: { tenantId, sku, name, priceInPence: 1000 },
-    update: { name },
-  });
-}
+import { prismaForTenant, mkTenant, mkProduct, uniq } from "../../_utils/factories";
 
 describe("tenant guard", () => {
   test("auto-scopes reads", async () => {
@@ -70,8 +35,6 @@ describe("tenant guard", () => {
 
     const created = await db.product.create({
       data: {
-        // You can use either form; both satisfy Prisma types.
-        // Using unchecked is simple for tests and plays nice with your guard.
         tenantId: t.id,
         sku: `D-${uniq()}`,
         name: "D one",
@@ -95,12 +58,7 @@ describe("tenant guard", () => {
     await expect(
       db.product.upsert({
         where: { tenantId_sku: { tenantId: t.id, sku: sku1 } }, // ✅ composite
-        create: {
-          tenantId: t.id,
-          sku: sku1,
-          name: "E one",
-          priceInPence: 2000,
-        },
+        create: { tenantId: t.id, sku: sku1, name: "E one", priceInPence: 2000 },
         update: { name: "E one v2" },
       })
     ).resolves.toBeDefined();
@@ -109,12 +67,7 @@ describe("tenant guard", () => {
     await expect(
       db.product.upsert({
         where: { id: "not-a-real-id" },
-        create: {
-          tenantId: t.id,
-          sku: `E-${uniq()}`,
-          name: "x",
-          priceInPence: 1,
-        },
+        create: { tenantId: t.id, sku: `E-${uniq()}`, name: "x", priceInPence: 1 },
         update: { name: "y" },
       })
     ).rejects.toThrow();

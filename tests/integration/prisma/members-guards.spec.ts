@@ -1,38 +1,9 @@
-// tests/members-guards.spec.ts
+// tests/integration/prisma/members-guards.spec.ts
 import { describe, test, expect } from "vitest";
-import { PrismaClient } from "@prisma/client";
-import { prisma } from "@/lib/db/prisma";
-import { prismaForTenant } from "@/lib/db/tenant-scoped";
+import type { PrismaClient } from "@prisma/client";
+import { sys, uniq, mkUser, mkTenant, member, prismaForTenant } from "../../_utils/factories";
 
-const sys = prisma as unknown as PrismaClient;
-const uniq = () => Math.random().toString(36).slice(2, 10);
-
-async function mkUser(email: string) {
-  return sys.user.upsert({
-    where: { email },
-    create: { email, passwordHash: "x" },
-    update: {},
-  });
-}
-async function mkTenant(slug: string, name: string) {
-  return sys.tenant.upsert({ where: { slug }, create: { slug, name }, update: { name } });
-}
-async function member(
-  userId: string,
-  tenantId: string,
-  caps: Partial<{
-    isOwner: boolean;
-    canManageMembers: boolean;
-    canManageProducts: boolean;
-    canViewProducts: boolean;
-  }>
-) {
-  return sys.membership.upsert({
-    where: { userId_tenantId: { userId, tenantId } },
-    create: { userId, tenantId, ...caps },
-    update: { ...caps },
-  });
-}
+const prisma = sys as unknown as PrismaClient;
 
 describe("membership guards", () => {
   test("blocks demoting the last owner", async () => {

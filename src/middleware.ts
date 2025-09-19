@@ -1,5 +1,4 @@
 // src/middleware.ts
-// src/middleware.ts
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { verifyDoubleSubmit } from "@/lib/security/csrf";
@@ -82,8 +81,10 @@ export function middleware(req: NextRequest) {
     }
   }
 
+  const needsCsrf = !["GET", "HEAD", "OPTIONS"].includes(req.method);
+
   // 2) CSRF (skip token endpoint)
-  if (!shouldSkipCsrf(pathname)) {
+  if (needsCsrf && !shouldSkipCsrf(pathname)) {
     const csrfCheck = verifyDoubleSubmit(req);
     if (!csrfCheck.ok) {
       logger.warn({
@@ -91,7 +92,7 @@ export function middleware(req: NextRequest) {
         requestId,
         method: req.method,
         path: pathname,
-        hasCookie: Boolean(req.cookies.get("csrf")),
+        hasCookie: Boolean(req.cookies.get("csrf_token")),
         hasHeader: Boolean(req.headers.get("x-csrf-token")),
       });
       return denyJson(req, requestId, 403, csrfCheck.error ?? "CSRF failed");
