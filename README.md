@@ -115,14 +115,124 @@ Key folders/files:
 ---
 
 ## 🧪 Testing
-- **Type checks:** `npm run typecheck`
-- **Build:** `npm run build`
-- **Dev:** `npm run dev`
-- **Prisma:** `npx prisma migrate dev`, `npx prisma studio`
-- **(Optional) Unit tests:** `npm test` if configured
 
-> Add minimal API tests for idempotency/OCC/tenant guards.
+This project uses **Vitest** for unit & integration tests, plus Prisma-backed helpers for realistic API exercises (idempotency, optimistic concurrency control, tenant scoping, etc.).
 
+### Quick start
+
+```bash
+# Type checks
+npm run typecheck
+
+# Build (ensures the app compiles)
+npm run build
+
+# Local dev
+npm run dev
+
+# Prisma (first-time setup / after schema changes)
+npx prisma migrate dev
+# Optional visual DB browser
+npx prisma studio
+
+# Run the full test suite once (CI-style)
+npm run test:run
+
+# Watch mode (developer workflow)
+npx vitest
+
+# Run a single file
+npx vitest tests/integration/api/products/list.spec.ts
+
+# Run only unit or only integration
+npx vitest tests/unit
+npx vitest tests/integration
+
+# Filter by test name (substring)
+npx vitest -t "idempotent replay"
+```
+
+### What’s covered
+#### Security & Middleware
+- Strict Origin checks for non-GET requests
+- CSRF double-submit cookie/header
+
+#### Standard security headers
+- Rate limiting (fixed window): per-IP for auth, per-user for mutations
+
+#### Idempotency
+- Request replay via Idempotency-Key for POST/PATCH routes
+- No double-writes on replay, correct 409 for in-progress
+
+#### Optimistic Concurrency Control (OCC)
+- expectedVersion matching and 409 conflicts with { expectedVersion, currentVersion }
+
+#### Audit logs
+- Structured diffs for create / update / delete on Products & Members
+- Redaction-aware assertions (supporting both detailed and redacted payloads)
+- Replay does not double-write audit entries
+-
+#### Tenant & Permissions
+- Tenant scoping on reads & writes
+- Members route guards (owners-only, “cannot demote last owner”, managers-only access)
+- Product permissions (manage vs view)
+
+#### Products API
+- Create / Get by ID / Delete
+- List with search (?q=) and cursor pagination (?limit=, ?cursor=)
+- Validation & authorization on PATCH/POST
+
+#### Members API
+- Create, list, get-by-id, delete
+- PATCH with OCC + guards
+- Owners-only behaviors on POST/PATCH
+
+#### Prisma-level guards
+- Cross-tenant isolation & membership constraints
+
+### Test Layout
+```text
+tests/
+  _utils/                 # NextAuth/Next.js context mocks, HTTP helpers, factories, setup
+  integration/
+    api/
+      audit/
+        members.spec.ts
+        products.spec.ts
+      members/
+        create-and-list.spec.ts
+        delete-and-get.spec.ts
+        list.guards.spec.ts
+        occ-and-guards.spec.ts
+        patch-idempotency-and-owners-only.spec.ts
+        post.owners-only.spec.ts
+      products/
+        authorization.spec.ts
+        delete.spec.ts
+        get-and-delete.spec.ts
+        get-by-id.spec.ts
+        list.spec.ts
+        occ.spec.ts
+        patch.validation.spec.ts
+        permissions.spec.ts
+        validation.spec.ts
+      security/
+        csrf.spec.ts
+        rate-limit.spec.ts
+      smoke/
+        product.spec.ts
+    prisma/
+      members-guards.spec.ts
+      tenant-guard.spec.ts
+  setup.ts
+```
+
+### Tips & gotchas
+- Prisma schema must be migrated before running tests the first time: npx prisma migrate dev.
+- Idempotency: Use the same Idempotency-Key to replay; expect a fresh requestId but identical data.
+- OCC: Always send expectedVersion. A mismatch returns 409 with { expectedVersion, currentVersion }.
+- Rate limits: Tests assert headers Retry-After, X-RateLimit-* when 429 is triggered.
+- Running specific buckets: Use folder globs, e.g. npx vitest tests/integration/api/members.
 ---
 
 ## ⚙️ Environment Setup
