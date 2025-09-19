@@ -29,17 +29,22 @@ export default [
   {
     files: ["**/*.{ts,tsx,js,mjs,cjs}"],
     rules: {
+      // Do NOT import PrismaClient directly; import the singleton instead.
       "no-restricted-imports": ["error", {
-        // ⬇️ forbid runtime imports from @prisma/client…
-        paths: ["@prisma/client"],
-        // ⬇️ …but allow `import type { Prisma } from "@prisma/client"`
-        allowTypeImports: true
+        paths: [
+          {
+            name: "@prisma/client",
+            message:
+              "Import { prisma } from '@/lib/db/prisma' instead of importing PrismaClient directly.",
+          },
+        ],
       }],
       "no-restricted-syntax": [
         "error",
         {
           selector: "NewExpression[callee.name='PrismaClient']",
-          message: "Do not call `new PrismaClient()`. Use the shared singleton.",
+          message:
+            "Do not call `new PrismaClient()`. Import { prisma } from '@/lib/db/prisma'.",
         },
       ],
     },
