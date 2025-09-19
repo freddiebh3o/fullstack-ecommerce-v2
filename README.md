@@ -24,6 +24,125 @@ Backend-first, tenant‑isolated e‑commerce API built with Next.js App Router,
 
 ---
 
+## 🚀 Quick Start (Install, Migrate, Seed, Run, Test)
+
+This project is **backend‑first**. You can exercise APIs immediately without any frontend work.
+
+### 0 Prerequisites
+- **Node.js** 18+ (LTS recommended)  
+- **PostgreSQL** 14+ (local or cloud)  
+- **pnpm/npm** (commands below use `npm`)  
+
+> Ensure a reachable Postgres URL. For local dev, something like:  
+> `postgresql://postgres:postgres@localhost:5432/fullstack_ecommerce?schema=public`
+
+---
+
+### 1 Clone & Install
+```bash
+git clone <your-fork-or-repo-url> fullstack-ecommerce-v2
+cd fullstack-ecommerce-v2
+npm install
+```
+
+---
+
+### 2 Environment
+Create **.env** in the project root (copy from `.env.example` if present) and set:
+```dotenv
+# Required
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/fullstack_ecommerce?schema=public"
+NEXTAUTH_SECRET="dev-secret-change-me"
+NEXTAUTH_URL="http://localhost:3000"
+
+# Optional (only if used in your setup)
+# S3_... / EMAIL_... etc.
+```
+> Tip: If you rotate `DATABASE_URL`, re‑run the Prisma steps below.
+
+---
+
+### 3 Prisma: Generate & Migrate
+```bash
+npx prisma generate
+npx prisma migrate dev --name init
+# Optional DB browser:
+npx prisma studio
+```
+
+---
+
+### 4 Seed (sample users/tenants/products)
+Choose ONE that matches your setup:
+```bash
+# A) If seeding is wired to Prisma (package.json -> "prisma":{"seed": "..."})
+npx prisma db seed
+
+# B) Using tsx (preferred for TS scripts)
+npx tsx prisma/seed.ts
+
+# C) Using ts-node (if you prefer ts-node)
+npx ts-node prisma/seed.ts
+```
+> After seeding, you should have a couple of sample tenants (e.g., `acme`, `globex`) and users.
+
+---
+
+### 5 Run the App
+```bash
+# Type checks (fast feedback)
+npm run typecheck
+
+# Build once (CI-style)
+npm run build
+
+# Local dev server (http://localhost:3000)
+npm run dev
+```
+
+---
+
+### 6 Tests
+```bash
+# Full test run (CI-style)
+npm run test:run
+
+# Watch mode (developer workflow)
+npx vitest
+
+# Run a specific file
+npx vitest tests/integration/api/products/list.spec.ts
+
+# Common buckets
+npx vitest tests/integration
+npx vitest tests/unit
+```
+> First test run requires the DB to be migrated. If tests manipulate data, point them at a test DB URL via `.env.test` or environment overrides.
+
+---
+
+### 7 Useful One‑Liners
+```bash
+# Reset + migrate fresh (DANGER: drops data)
+npx prisma migrate reset --force
+
+# Print Prisma client version / diagnose
+npx prisma -v
+npx prisma doctor
+
+# Open Prisma Studio
+npx prisma studio
+```
+
+---
+
+### Troubleshooting
+- **`P1001: Can't reach database`** → Verify `DATABASE_URL` & Postgres is running.
+- **Type errors on build** → `npm run typecheck` to pinpoint; fix strict TS issues.
+- **Seed fails (module not found)** → Try the alternative runner (tsx vs ts-node) or wire `"prisma.db": "tsx prisma/seed.ts"`.
+- **Multiple Prisma clients in dev** → Ensure all code imports `prisma` from `src/lib/db/prisma`.
+
+
 ## 📂 Project Structure (truncated)
 ```
 fullstack-ecommerce-v2/
@@ -58,9 +177,6 @@ fullstack-ecommerce-v2/
     ├─ vercel.svg
     ├─ window.svg
   ├─ scripts/
-    ├─ cleanup-idempotency.mjs
-    ├─ smoke-db.ts
-    ├─ smoke-tenant.ts
   ├─ src/
     ├─ app/
       ├─ api/

@@ -24,99 +24,106 @@ model IdempotencyKey {
 }
 
 model Domain {
-  id        String  @id @default(uuid())
+  id        String   @id @default(uuid())
   tenantId  String
-  host      String  @unique   // e.g. shop.acme.com
-  isPrimary Boolean @default(false)
+  host      String   @unique // e.g. shop.acme.com
+  isPrimary Boolean  @default(false)
   createdAt DateTime @default(now())
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 }
 
 model User {
-  id           String      @id @default(uuid())
-  email        String      @unique
-  name         String?     // optional display name
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String? // optional display name
   passwordHash String
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  memberships  Membership[]
-  auditLogs    AuditLog[]
+  memberships Membership[]
+  auditLogs   AuditLog[]
 
   @@index([email])
 }
 
 model Tenant {
-  id         String        @id @default(uuid())
-  slug       String        @unique
-  name       String
-  isActive   Boolean       @default(true)
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
+  id        String   @id @default(uuid())
+  slug      String   @unique
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   memberships Membership[]
   products    Product[]
   auditLogs   AuditLog[]
-  domain Domain[]
+  domain      Domain[]
 
   @@index([slug])
 }
 
 model Membership {
-  id         String   @id @default(uuid())
-  userId     String
-  tenantId   String
+  id       String @id @default(uuid())
+  userId   String
+  tenantId String
 
   // v1 "boolean capabilities"
-  isOwner            Boolean @default(false)
-  canManageMembers   Boolean @default(false)
-  canManageProducts  Boolean @default(false)
-  canViewProducts    Boolean @default(true)
+  isOwner           Boolean @default(false)
+  canManageMembers  Boolean @default(false)
+  canManageProducts Boolean @default(false)
+  canViewProducts   Boolean @default(true)
 
-  createdAt  DateTime @default(now())
+  version Int @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, tenantId]) // one membership per (user, tenant)
+  @@unique([userId, tenantId])
   @@index([tenantId])
   @@index([userId])
+  @@index([id, version], map: "Membership_id_version_idx")
 }
 
 model Product {
-  id            String   @id @default(uuid())
-  tenantId      String
-  sku           String
-  name          String
-  description   String?
+  id           String  @id @default(uuid())
+  tenantId     String
+  sku          String
+  name         String
+  description  String?
   /// price in minor units (pence for GBP)
-  priceInPence  Int
+  priceInPence Int
   /// ISO 4217-like code; default GBP
-  currency      String   @default("GBP")
-  isActive      Boolean  @default(true)
+  currency     String  @default("GBP")
+  isActive     Boolean @default(true)
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  version Int @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, sku])
   @@index([tenantId, isActive])
+  @@index([id, version], map: "Product_id_version_idx")
 }
 
 model AuditLog {
-  id         String    @id @default(uuid())
-  tenantId   String?   // some events might be global (e.g., login before selecting tenant)
+  id         String  @id @default(uuid())
+  tenantId   String? // some events might be global (e.g., login before selecting tenant)
   userId     String?
-  action     String    // e.g., "PRODUCT_CREATE", "MEMBERSHIP_UPDATE"
-  entityType String?   // e.g., "Product", "Membership"
-  entityId   String?   // id string of the entity
-  diff       Json?     // optional structured changes
+  action     String // e.g., "PRODUCT_CREATE", "MEMBERSHIP_UPDATE"
+  entityType String? // e.g., "Product", "Membership"
+  entityId   String? // id string of the entity
+  diff       Json? // optional structured changes
   ip         String?
   userAgent  String?
 
-  createdAt  DateTime  @default(now())
+  createdAt DateTime @default(now())
 
   tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)

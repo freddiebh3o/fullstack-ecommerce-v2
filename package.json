@@ -13,11 +13,8 @@
     "db:reset": "prisma migrate reset --force --skip-generate",
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
-    "smoke:db": "tsx scripts/smoke-db.ts",
-    "smoke:tenant": "tsx scripts/smoke-tenant.ts",
     "test": "vitest",
-    "test:run": "vitest --run",
-    "cleanup:idempotency": "node scripts/cleanup-idempotency.mjs"
+    "test:run": "vitest --run"
   },
   "dependencies": {
     "@prisma/client": "^6.16.2",

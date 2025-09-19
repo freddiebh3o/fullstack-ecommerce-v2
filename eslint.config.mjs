@@ -25,40 +25,46 @@ export default [
     ],
   },
 
-  // 1) Forbid raw Prisma client imports everywhere by default
+  // 1) Default: forbid direct @prisma/client imports & new PrismaClient()
   {
-    files: ["**/*.{ts,tsx}"],
+    files: ["**/*.{ts,tsx,js,mjs,cjs}"],
     rules: {
       "no-restricted-imports": ["error", {
-        paths: [
-          {
-            name: "@/lib/db/prisma",
-            message:
-              "Don't import the raw Prisma client. Use '@/lib/db/system' (systemDb) for pre-tenant work, or prismaForTenant() elsewhere.",
-          },
-        ],
-        // Also catch relative imports to the same file
-        patterns: [
-          {
-            group: ["**/lib/db/prisma"],
-            message:
-              "Don't import the raw Prisma client. Use '@/lib/db/system' (systemDb) for pre-tenant work, or prismaForTenant() elsewhere.",
-          },
-        ],
+        // ⬇️ forbid runtime imports from @prisma/client…
+        paths: ["@prisma/client"],
+        // ⬇️ …but allow `import type { Prisma } from "@prisma/client"`
+        allowTypeImports: true
       }],
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "NewExpression[callee.name='PrismaClient']",
+          message: "Do not call `new PrismaClient()`. Use the shared singleton.",
+        },
+      ],
     },
   },
 
-  // 2) Allow raw Prisma ONLY in these places
+  // 2) Allow direct PrismaClient ONLY in the singleton module (and optionally scripts)
   {
     files: [
-      "src/lib/db/system.ts",
-      "prisma/seed.ts",
-      "scripts/**/*.{ts,tsx,js}",
-      "src/app/api/auth/**/*.{ts,tsx}",
+      "src/lib/db/prisma.ts",
     ],
     rules: {
       "no-restricted-imports": "off",
+      "no-restricted-syntax": "off",
+    },
+  },
+
+  // 3) (Optional) If you want to keep raw clients in standalone scripts, allow there:
+  {
+    files: [
+      "scripts/**/*.{ts,tsx,js,mjs,cjs}",
+      "prisma/seed.ts",
+    ],
+    rules: {
+      "no-restricted-imports": "off",
+      "no-restricted-syntax": "off",
     },
   },
 ];
