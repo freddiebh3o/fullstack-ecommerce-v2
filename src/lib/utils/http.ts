@@ -17,8 +17,8 @@ export function ok<T>(
   req?: Request
 ) {
   const body: Record<string, unknown> = { ok: true, data };
-  let requestId: string | undefined;
 
+  let requestId: string | undefined;
   if (req) {
     requestId = getOrCreateRequestId(req.headers);
     body.requestId = requestId;
@@ -26,7 +26,6 @@ export function ok<T>(
 
   let status = 200;
   let init: ResponseInit | undefined;
-
   if (typeof statusOrInit === "number") {
     status = statusOrInit;
   } else if (statusOrInit && typeof statusOrInit === "object") {
@@ -38,21 +37,29 @@ export function ok<T>(
   return res;
 }
 
+// Overloads for fail so callers can pass headers inline
+// fail(status, error)
+// fail(status, error, extra, req?)
+// fail(status, error, extra, req?, init)
+export function fail(status: number, error: string): NextResponse;
+export function fail(status: number, error: string, extra?: Extra, req?: Request): NextResponse;
+export function fail(status: number, error: string, extra?: Extra, req?: Request, init?: ResponseInit): NextResponse;
 export function fail(
   status: number,
   error: string,
   extra?: Extra,
-  req?: Request
+  req?: Request,
+  init?: ResponseInit
 ) {
   const body: Record<string, unknown> = { ok: false, error, ...(extra ?? {}) };
-  let requestId: string | undefined;
 
+  let requestId: string | undefined;
   if (req) {
     requestId = getOrCreateRequestId(req.headers);
     body.requestId = requestId;
   }
 
-  const res = NextResponse.json(body, { status });
+  const res = NextResponse.json(body, { status, ...(init ?? {}) });
   if (requestId) res.headers.set("x-request-id", requestId);
   return res;
 }

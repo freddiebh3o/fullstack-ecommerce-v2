@@ -1,5 +1,5 @@
 // src/app/api/admin/members/route.ts
-import { z } from "zod";
+import { MemberCreateSchema } from "@/lib/core/schemas";
 import { requireSession } from "@/lib/auth/session";
 import { requireCurrentTenantId } from "@/lib/core/tenant";
 import { prismaForTenant } from "@/lib/db/tenant-scoped";
@@ -60,18 +60,6 @@ export const GET = withApi(async (req: Request) => {
   return ok({ data }, 200, req);
 });
 
-const CreateMemberInput = z.object({
-  email: z.string().email(),
-  caps: z
-    .object({
-      isOwner: z.boolean().optional(),
-      canManageMembers: z.boolean().optional(),
-      canManageProducts: z.boolean().optional(),
-      canViewProducts: z.boolean().optional(),
-    })
-    .default({}),
-});
-
 // POST: attach existing user to this tenant (idempotent + rate-limited)
 export const POST = withApi(async (req: Request) => {
   const session = await requireSession();
@@ -95,12 +83,19 @@ export const POST = withApi(async (req: Request) => {
   });
   if (!uStats.ok) {
     log.warn({ event: "rate_limited", scope: "mut:user", userId, ...uStats });
-    const res = fail(429, "Too Many Requests", undefined, req);
-    res.headers.set("x-request-id", requestId);
-    res.headers.set("Retry-After", String(uStats.retryAfter ?? 60));
-    res.headers.set("X-RateLimit-Limit", String(uStats.limit));
-    res.headers.set("X-RateLimit-Remaining", String(uStats.remaining));
-    return res;
+    return fail(
+      429,
+      "Too Many Requests",
+      undefined,
+      req,
+      {
+        headers: {
+          "Retry-After": String(uStats.retryAfter ?? 60),
+          "X-RateLimit-Limit": String(uStats.limit),
+          "X-RateLimit-Remaining": String(uStats.remaining),
+        },
+      }
+    );
   }
 
   const me = await systemDb.membership.findFirst({
@@ -112,7 +107,7 @@ export const POST = withApi(async (req: Request) => {
   }
 
   const body = await req.json().catch(() => null);
-  const parsed = CreateMemberInput.safeParse(body);
+  const parsed = MemberCreateSchema.safeParse(body);
   if (!parsed.success) {
     return fail(422, "Invalid input", { issues: parsed.error.flatten() }, req);
   }

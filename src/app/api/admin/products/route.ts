@@ -73,7 +73,7 @@ export const POST = withApi(async (req: Request) => {
   }
 
   // Per-user mutation cap
-  const { log, requestId } = loggerForRequest(req);
+  const { log } = loggerForRequest(req);
   const uStats = rateLimitFixedWindow({
     key: `mut:user:${userId}`,
     limit: Number(process.env.RL_MUTATION_PER_USER_PER_MIN || 60),
@@ -81,12 +81,19 @@ export const POST = withApi(async (req: Request) => {
   });
   if (!uStats.ok) {
     log.warn({ event: "rate_limited", scope: "mut:user", userId, ...uStats });
-    const res = fail(429, "Too Many Requests", undefined, req);
-    res.headers.set("x-request-id", requestId);
-    res.headers.set("Retry-After", String(uStats.retryAfter ?? 60));
-    res.headers.set("X-RateLimit-Limit", String(uStats.limit));
-    res.headers.set("X-RateLimit-Remaining", String(uStats.remaining));
-    return res;
+    return fail(
+      429,
+      "Too Many Requests",
+      undefined,
+      req,
+      {
+        headers: {
+          "Retry-After": String(uStats.retryAfter ?? 60),
+          "X-RateLimit-Limit": String(uStats.limit),
+          "X-RateLimit-Remaining": String(uStats.remaining),
+        },
+      }
+    );
   }
 
   const me = await systemDb.membership.findFirst({

@@ -1,5 +1,5 @@
 // src/app/api/admin/members/[id]/route.ts
-import { z } from "zod";
+import { MemberUpdateCapsSchema } from "@/lib/core/schemas";
 import { requireSession } from "@/lib/auth/session";
 import { requireCurrentTenantId } from "@/lib/core/tenant";
 import { prismaForTenant } from "@/lib/db/tenant-scoped";
@@ -10,19 +10,6 @@ import { withApi } from "@/lib/utils/with-api";
 import { loggerForRequest } from "@/lib/log/log";
 import { rateLimitFixedWindow } from "@/lib/security/rate-limit";
 import { reserveIdempotency, persistIdempotentSuccess } from "@/lib/security/idempotency";
-import { NextResponse } from "next/server";
-
-const UpdateCapsInput = z.object({
-  expectedVersion: z.number().int().positive(),
-  caps: z
-    .object({
-      isOwner: z.boolean().optional(),
-      canManageMembers: z.boolean().optional(),
-      canManageProducts: z.boolean().optional(),
-      canViewProducts: z.boolean().optional(),
-    })
-    .refine((v) => Object.keys(v).length > 0, { message: "No changes provided" }),
-});
 
 export const PATCH = withApi(async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   const { id } = await params;
@@ -49,11 +36,19 @@ export const PATCH = withApi(async (req: Request, { params }: { params: Promise<
   });
   if (!uStats.ok) {
     log.warn({ event: "rate_limited", scope: "mut:user", userId, ...uStats });
-    const res = fail(429, "Too Many Requests", undefined, req);
-    res.headers.set("Retry-After", String(uStats.retryAfter ?? 60));
-    res.headers.set("X-RateLimit-Limit", String(uStats.limit));
-    res.headers.set("X-RateLimit-Remaining", String(uStats.remaining));
-    return res;
+    return fail(
+      429,
+      "Too Many Requests",
+      undefined,
+      req,
+      {
+        headers: {
+          "Retry-After": String(uStats.retryAfter ?? 60),
+          "X-RateLimit-Limit": String(uStats.limit),
+          "X-RateLimit-Remaining": String(uStats.remaining),
+        },
+      }
+    );
   }
 
   // Caller must manage members; only owners can modify isOwner
@@ -66,12 +61,9 @@ export const PATCH = withApi(async (req: Request, { params }: { params: Promise<
   }
 
   const body = await req.json().catch(() => null);
-  const parsed = UpdateCapsInput.safeParse(body);
+  const parsed = MemberUpdateCapsSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json(
-      { ok: false, error: "Invalid input", issues: parsed.error.flatten() },
-      { status: 422 }
-    );
+    return fail(422, "Invalid input", { issues: parsed.error.flatten() }, req);
   }
   const { expectedVersion, caps } = parsed.data;
 

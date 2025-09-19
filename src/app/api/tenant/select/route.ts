@@ -5,14 +5,16 @@ import { systemDb } from "@/lib/db/system";
 import { TENANT_COOKIE } from "@/lib/core/constants";
 import { ok, fail } from "@/lib/utils/http";
 import { withApi } from "@/lib/utils/with-api";
+import { TenantSelectSchema } from "@/lib/core/schemas";
 
 export const POST = withApi(async (req: Request) => {
   const session = await requireSession();
-  const { tenantId } = await req.json().catch(() => ({} as any));
-
-  if (!tenantId) {
-    return fail(400, "tenantId required", undefined, req);
+  const body = await req.json().catch(() => null);
+  const parsed = TenantSelectSchema.safeParse(body);
+  if (!parsed.success) {
+    return fail(422, "Invalid input", { issues: parsed.error.flatten() }, req);
   }
+  const { tenantId } = parsed.data;
 
   // Verify membership
   const membership = await systemDb.membership.findFirst({

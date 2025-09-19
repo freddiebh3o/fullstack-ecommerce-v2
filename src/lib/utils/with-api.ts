@@ -1,7 +1,10 @@
 // src/lib/utils/with-api.ts
 import { NextResponse } from "next/server";
+import { ZodError } from "zod";
 import { loggerForRequest } from "@/lib/log/log";
 import { ipFromRequest, rateLimitFixedWindow } from "../security/rate-limit";
+import { mapPrismaError } from "@/lib/utils/prisma-errors";
+import { fail } from "@/lib/utils/http";
 
 // Overload: handlers without ctx
 export function withApi<TRes extends NextResponse = NextResponse>(
@@ -13,12 +16,14 @@ export function withApi<TCtx, TRes extends NextResponse = NextResponse>(
   handler: (req: Request, ctx: TCtx) => Promise<TRes> | TRes
 ): (req: Request, ctx: TCtx) => Promise<TRes>;
 
-// Impl
-export function withApi(handler: (req: Request, ctx?: unknown) => Promise<NextResponse> | NextResponse) {
+export function withApi(
+  handler: (req: Request, ctx?: unknown) => Promise<NextResponse> | NextResponse
+) {
   return async (req: Request, ctx?: unknown) => {
     const started = Date.now();
     const { log, requestId } = loggerForRequest(req);
 
+    // Per-IP mutation rate limit
     if (req.method !== "GET") {
       const ip = ipFromRequest(req);
       const stats = rateLimitFixedWindow({
@@ -27,13 +32,26 @@ export function withApi(handler: (req: Request, ctx?: unknown) => Promise<NextRe
         windowMs: 60_000,
       });
       if (!stats.ok) {
-        log.warn({ event: "rate_limited", scope: "mut:ip", ip, ...stats });
-        const res = NextResponse.json({ ok: false, error: "Too Many Requests", requestId }, { status: 429 });
-        res.headers.set("x-request-id", requestId);
-        res.headers.set("Retry-After", String(stats.retryAfter ?? 60));
-        res.headers.set("X-RateLimit-Limit", String(stats.limit));
-        res.headers.set("X-RateLimit-Remaining", String(stats.remaining));
-        return res;
+        log.warn({
+          event: "rate_limited",
+          scope: "mut:ip",
+          ip,
+          ...stats,
+          durationMs: Date.now() - started,
+        });
+        return fail(
+          429,
+          "Too Many Requests",
+          undefined,
+          req,
+          {
+            headers: {
+              "Retry-After": String(stats.retryAfter ?? 60),
+              "X-RateLimit-Limit": String(stats.limit),
+              "X-RateLimit-Remaining": String(stats.remaining),
+            },
+          }
+        ) as NextResponse;
       }
     }
 
@@ -48,15 +66,51 @@ export function withApi(handler: (req: Request, ctx?: unknown) => Promise<NextRe
 
       return res;
     } catch (err) {
+      // 1) Zod thrown (in case any route uses .parse())
+      if (err instanceof ZodError) {
+        const issues = err.flatten();
+        log.info({
+          event: "zod_validation_error",
+          issues,
+          durationMs: Date.now() - started,
+        });
+        return fail(422, "Invalid input", { issues }, req) as NextResponse;
+      }
+
+      // 2) Prisma → HTTP mapping
+      const mapped = mapPrismaError(err);
+      if (mapped) {
+        log.warn(
+          {
+            event: "prisma_error",
+            status: mapped.status,
+            ...mapped.details,
+            durationMs: Date.now() - started,
+          },
+          mapped.message
+        );
+        return fail(mapped.status, mapped.message, undefined, req) as NextResponse;
+      }
+
+      // 3) Malformed JSON (req.json() usually throws SyntaxError)
+      if (err instanceof SyntaxError) {
+        log.info({
+          event: "malformed_json",
+          durationMs: Date.now() - started,
+        });
+        return fail(400, "Malformed JSON", undefined, req) as NextResponse;
+      }
+
+      // 4) Fallback: unexpected error
       log.error(
         {
-          durationMs: Date.now() - started,
+          event: "unhandled_route_error",
           err,
+          durationMs: Date.now() - started,
         },
         "unhandled_route_error"
       );
-
-      return NextResponse.json({ ok: false, error: "Internal Server Error" }, { status: 500 });
+      return fail(500, "Internal Server Error", undefined, req) as NextResponse;
     }
   };
 }

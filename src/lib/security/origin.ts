@@ -60,6 +60,10 @@ export function verifyOriginStrict(req: Request): Check {
   const referer = req.headers.get("referer");
   const ua = req.headers.get("user-agent") || "";
 
+  console.log("allowed", allowed);
+  console.log("origin", origin);
+  console.log("referer", referer);
+
   // 1) If Origin present, it must match
   if (origin) {
     return matchesAllowed(origin, allowed)
@@ -80,8 +84,8 @@ export function verifyOriginStrict(req: Request): Check {
   //   /PostmanRuntime|insomnia/i.test(ua);
   const allowMissing =
     (process.env.ALLOW_MISSING_ORIGIN || "").toLowerCase() === "true";
-  if (allowMissing) return { ok: true };
 
+  console.log("allowMissing", allowMissing);
 
   if (allowMissing) return { ok: true };
 
