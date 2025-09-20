@@ -34,6 +34,7 @@ export default [
         paths: [
           {
             name: "@prisma/client",
+            importNames: ["PrismaClient"],
             message:
               "Import { prisma } from '@/lib/db/prisma' instead of importing PrismaClient directly.",
           },

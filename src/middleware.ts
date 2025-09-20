@@ -35,7 +35,7 @@ export function middleware(req: NextRequest) {
   const requestId =
     existingId ||
     (typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? (crypto as any).randomUUID()
+      ? crypto.randomUUID()
       : Math.random().toString(36).slice(2));
 
   const { pathname } = req.nextUrl;

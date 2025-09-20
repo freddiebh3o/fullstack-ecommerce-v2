@@ -30,10 +30,10 @@ export const ProductUpdateSchema = ProductBase.partial()
   })
   .strict()
   .refine((data) => {
-    // Must send at least one field besides expectedVersion
-    const { expectedVersion, ...rest } = data as Record<string, unknown>;
-    return Object.values(rest).some((v) => v !== undefined);
-  }, { message: "No changes provided" });
+      // Must send at least one field besides expectedVersion
+      return Object.entries(data as Record<string, unknown>)
+        .some(([k, v]) => k !== "expectedVersion" && v !== undefined);
+    }, { message: "No changes provided" });
 
 /** Member caps schema reused in create/update */
 const MemberCapsSchema = z

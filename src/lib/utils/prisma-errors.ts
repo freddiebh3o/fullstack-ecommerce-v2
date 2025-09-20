@@ -5,7 +5,7 @@ import { Prisma } from "@prisma/client";
 export function isPrismaKnownError(
   e: unknown
 ): e is Prisma.PrismaClientKnownRequestError {
-  return !!e && typeof e === "object" && "code" in (e as any);
+  return !!e && typeof e === "object" && "code" in e;
 }
 
 // Keep your existing helper (routes may still use it)
@@ -18,7 +18,7 @@ export function isUniqueViolation(
 
   if (!constraintNames || constraintNames.length === 0) return true;
 
-  const metaTarget = (e as any).meta?.target as string[] | string | undefined;
+  const metaTarget = e.meta?.target as string[] | string | undefined;
   const targets = Array.isArray(metaTarget) ? metaTarget : metaTarget ? [metaTarget] : [];
   const joined = targets.join(",");
   return constraintNames.some((c) => joined.includes(c));
@@ -34,7 +34,7 @@ export function mapPrismaError(e: unknown):
   if (!isPrismaKnownError(e)) return null;
 
   const code = e.code;
-  const details = { code, meta: (e as any).meta };
+  const details = { code, meta: e.meta };
 
   switch (code) {
     case "P2002": // Unique constraint failed

@@ -58,7 +58,6 @@ export function verifyOriginStrict(req: Request): Check {
   const allowed = parseAllowedOrigins();
   const origin = req.headers.get("origin");
   const referer = req.headers.get("referer");
-  const ua = req.headers.get("user-agent") || "";
 
   console.log("allowed", allowed);
   console.log("origin", origin);

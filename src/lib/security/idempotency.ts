@@ -1,4 +1,5 @@
 // src/lib/security/idempotency.ts
+import type { Prisma } from "@prisma/client";
 import { systemDb } from "@/lib/db/system";
 
 const IDEMPOTENCY_HEADER = "idempotency-key";
@@ -123,7 +124,8 @@ export async function persistIdempotentSuccess(
     },
     data: {
       statusCode,
-      response: responseData as any,
+      // JSON column — use Prisma.InputJsonValue for writes
+      response: responseData as Prisma.InputJsonValue,
     },
   });
 }

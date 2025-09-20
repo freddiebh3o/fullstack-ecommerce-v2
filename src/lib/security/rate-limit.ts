@@ -13,10 +13,6 @@ export type RateStats = {
   resetAt: number;     // epoch ms
 };
 
-function keyOf(parts: (string | number | undefined | null)[]) {
-  return parts.filter(Boolean).join("|");
-}
-
 export function ipFromRequest(req: Request): string {
   const xf = req.headers.get("x-forwarded-for");
   if (xf) return xf.split(",")[0]!.trim();

@@ -18,7 +18,7 @@ export const GET = withApi(async (req: Request) => {
   const tenantId = await requireCurrentTenantId();
 
   const me = await systemDb.membership.findFirst({
-    where: { userId: (session.user as any).id, tenantId },
+    where: { userId: session.user.id, tenantId },
     select: { canManageMembers: true },
   });
   if (!me || !me.canManageMembers) {
@@ -65,7 +65,7 @@ export const POST = withApi(async (req: Request) => {
   const session = await requireSession();
   const tenantId = await requireCurrentTenantId();
 
-  const userId = (session.user as any).id ?? null;
+  const userId = session.user.id ?? null;
 
   const reserve = await reserveIdempotency(req, userId, tenantId);
   if (reserve.mode === "replay") {
@@ -75,7 +75,7 @@ export const POST = withApi(async (req: Request) => {
     return fail(409, "Request already in progress", undefined, req);
   }
 
-  const { log, requestId } = loggerForRequest(req);
+  const { log } = loggerForRequest(req);
   const uStats = rateLimitFixedWindow({
     key: `mut:user:${userId}`,
     limit: Number(process.env.RL_MUTATION_PER_USER_PER_MIN || 60),
@@ -99,7 +99,7 @@ export const POST = withApi(async (req: Request) => {
   }
 
   const me = await systemDb.membership.findFirst({
-    where: { userId: (session.user as any).id, tenantId },
+    where: { userId: session.user.id, tenantId },
     select: { isOwner: true, canManageMembers: true },
   });
   if (!me || !me.canManageMembers) {
@@ -148,9 +148,9 @@ export const POST = withApi(async (req: Request) => {
       },
     });
 
-    await writeAudit(systemDb as any, {
+    await writeAudit(systemDb, {
       tenantId,
-      userId: (session.user as any).id ?? null,
+      userId: session.user.id ?? null,
       action: "MEMBERSHIP_CREATE",
       entityType: "Membership",
       entityId: created.id,

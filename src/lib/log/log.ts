@@ -25,7 +25,7 @@ export function getOrCreateRequestId(headers: Headers): string {
     headers.get("x-correlation-id") ||
     // Next.js edge/runtime provides crypto.randomUUID
     (typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? (crypto as any).randomUUID()
+      ? crypto.randomUUID()
       : Math.random().toString(36).slice(2))
   );
 }

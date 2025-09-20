@@ -17,7 +17,7 @@ export const PATCH = withApi(async (req: Request, { params }: { params: Promise<
   const { id } = await params;
 
   // Idempotency
-  const userId = (session.user as any).id ?? null;
+  const userId = session.user.id ?? null;
   const reserve = await reserveIdempotency(req, userId, tenantId);
   if (reserve.mode === "replay") return ok(reserve.response, 200, req);
   if (reserve.mode === "in_progress") return fail(409, "Request already in progress", undefined, req);
@@ -48,7 +48,7 @@ export const PATCH = withApi(async (req: Request, { params }: { params: Promise<
 
   // Capability
   const membership = await systemDb.membership.findFirst({
-    where: { userId: (session.user as any).id, tenantId },
+    where: { userId: session.user.id, tenantId },
     select: { canManageProducts: true },
   });
   if (!membership || !membership.canManageProducts) return fail(403, "Forbidden", undefined, req);
@@ -59,7 +59,7 @@ export const PATCH = withApi(async (req: Request, { params }: { params: Promise<
   if (!parsed.success) {
     return fail(422, "Invalid input", { issues: parsed.error.flatten() }, req);
   }
-  const { expectedVersion, ...changes } = parsed.data as any;
+  const { expectedVersion, ...changes } = parsed.data;
 
   const db = prismaForTenant(tenantId);
 
@@ -100,6 +100,11 @@ export const PATCH = withApi(async (req: Request, { params }: { params: Promise<
     },
   });
 
+  // Extremely rare race (e.g., concurrent delete between updateMany and read)
+  if (!updated) {
+    return fail(404, "Not found", undefined, req);
+  }
+
   // Idempotent success
   if (reserve.mode === "reserved") {
     await persistIdempotentSuccess(reserve.fp, 200, updated);
@@ -108,16 +113,16 @@ export const PATCH = withApi(async (req: Request, { params }: { params: Promise<
   // Build changed keys for the audit diff and include version if it bumped
   const changedKeys = [
     ...Object.keys(changes),
-    ...(before.version !== updated!.version ? ["version"] : []),
-  ] as (keyof typeof updated)[];
+    ...(before.version !== updated.version ? ["version"] : []),
+    ] as (keyof NonNullable<typeof updated>)[];
   
-  await writeAudit(db as any, {
+  await writeAudit(db, {
     tenantId,
-    userId: (session.user as any).id ?? null,
+    userId: session.user.id ?? null,
     action: "PRODUCT_UPDATE",
     entityType: "Product",
     entityId: id,
-    diff: diffForUpdate(before as any, updated as any, changedKeys as any),
+    diff: diffForUpdate(before, updated, changedKeys),
     req,
   });
 
@@ -130,7 +135,7 @@ export const DELETE = withApi(async (req: Request, { params }: { params: Promise
   const session = await requireSession();
   const tenantId = await requireCurrentTenantId();
   const { log } = loggerForRequest(req);
-  const userId = (session.user as any).id as string;
+  const userId = session.user.id as string;
   const uStats = rateLimitFixedWindow({
     key: `mut:user:${userId}`,
     limit: Number(process.env.RL_MUTATION_PER_USER_PER_MIN || 60),
@@ -154,7 +159,7 @@ export const DELETE = withApi(async (req: Request, { params }: { params: Promise
   }
 
   const membership = await systemDb.membership.findFirst({
-    where: { userId: (session.user as any).id, tenantId },
+    where: { userId: session.user.id, tenantId },
     select: { canManageProducts: true },
   });
   if (!membership || !membership.canManageProducts) return fail(403, "Forbidden", undefined, req);
@@ -169,9 +174,9 @@ export const DELETE = withApi(async (req: Request, { params }: { params: Promise
   const res = await db.product.deleteMany({ where: { id } });
   if (res.count !== 1) return fail(404, "Not found", undefined, req);
 
-  await writeAudit(db as any, {
+  await writeAudit(db, {
     tenantId,
-    userId: (session.user as any).id ?? null,
+    userId: session.user.id ?? null,
     action: "PRODUCT_DELETE",
     entityType: "Product",
     entityId: id,
@@ -188,7 +193,7 @@ export const GET = withApi(async (req: Request, { params }: { params: Promise<{ 
   const { id } = await params;
 
   const me = await systemDb.membership.findFirst({
-    where: { userId: (session.user as any).id, tenantId },
+    where: { userId: session.user.id, tenantId },
     select: { canManageProducts: true },
   });
   if (!me || !me.canManageProducts) return fail(403, "Forbidden", undefined, req);

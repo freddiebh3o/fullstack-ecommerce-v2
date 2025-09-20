@@ -12,7 +12,7 @@ export const GET = withApi(async (req: Request) => {
 
   // Ensure user still belongs to it (defensive)
   const m = await systemDb.membership.findFirst({
-    where: { userId: (session.user as any).id, tenantId },
+    where: { userId: session.user.id, tenantId },
     include: { tenant: true } as const,
   });
   if (!m) return fail(403, "Forbidden", undefined, req);

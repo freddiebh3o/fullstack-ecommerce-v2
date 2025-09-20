@@ -18,7 +18,7 @@ export const POST = withApi(async (req: Request) => {
 
   // Verify membership
   const membership = await systemDb.membership.findFirst({
-    where: { userId: (session.user as any).id, tenantId },
+    where: { userId: session.user.id, tenantId },
   });
   if (!membership) {
     return fail(403, "Forbidden", undefined, req);

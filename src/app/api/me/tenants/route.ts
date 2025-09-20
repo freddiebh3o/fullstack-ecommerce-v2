@@ -8,7 +8,7 @@ export const GET = withApi(async (req: Request) => {
   const session = await requireSession();
 
   const memberships = await systemDb.membership.findMany({
-    where: { userId: (session.user as any).id },
+    where: { userId: session.user.id },
     include: { tenant: true } as const,
     orderBy: { createdAt: "asc" },
   });

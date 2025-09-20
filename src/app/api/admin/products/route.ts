@@ -17,7 +17,7 @@ export const GET = withApi(async (req: Request) => {
   const tenantId = await requireCurrentTenantId();
 
   const me = await systemDb.membership.findFirst({
-    where: { userId: (session.user as any).id, tenantId },
+    where: { userId: session.user.id, tenantId },
     select: { canManageProducts: true },
   });
   if (!me || !me.canManageProducts) return fail(403, "Forbidden", undefined, req);
@@ -63,7 +63,7 @@ export const POST = withApi(async (req: Request) => {
   const tenantId = await requireCurrentTenantId();
 
   // Idempotency reservation / replay
-  const userId = (session.user as any).id ?? null;
+  const userId = session.user.id ?? null;
   const reserve = await reserveIdempotency(req, userId, tenantId);
   if (reserve.mode === "replay") {
     return ok(reserve.response, 201, req);
@@ -97,7 +97,7 @@ export const POST = withApi(async (req: Request) => {
   }
 
   const me = await systemDb.membership.findFirst({
-    where: { userId: (session.user as any).id, tenantId },
+    where: { userId: session.user.id, tenantId },
     select: { canManageProducts: true },
   });
   if (!me || !me.canManageProducts) return fail(403, "Forbidden", undefined, req);
@@ -135,9 +135,9 @@ export const POST = withApi(async (req: Request) => {
       },
     });
 
-    await writeAudit(db as any, {
+    await writeAudit(db, {
       tenantId,
-      userId: (session.user as any).id ?? null,
+      userId: session.user.id ?? null,
       action: "PRODUCT_CREATE",
       entityType: "Product",
       entityId: created.id,

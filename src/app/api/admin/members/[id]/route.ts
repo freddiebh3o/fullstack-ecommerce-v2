@@ -16,7 +16,7 @@ export const PATCH = withApi(async (req: Request, { params }: { params: Promise<
   const session = await requireSession();
   const tenantId = await requireCurrentTenantId();
 
-  const userId = (session.user as any).id ?? null;
+  const userId = session.user.id ?? null;
 
   // Idempotency
   const reserve = await reserveIdempotency(req, userId, tenantId);
@@ -53,7 +53,7 @@ export const PATCH = withApi(async (req: Request, { params }: { params: Promise<
 
   // Caller must manage members; only owners can modify isOwner
   const me = await systemDb.membership.findFirst({
-    where: { userId: (session.user as any).id, tenantId },
+    where: { userId: session.user.id, tenantId },
     select: { isOwner: true, canManageMembers: true },
   });
   if (!me || !me.canManageMembers) {
@@ -129,9 +129,9 @@ export const PATCH = withApi(async (req: Request, { params }: { params: Promise<
   }
 
   // Audit
-  await writeAudit(db as any, {
+  await writeAudit(db, {
     tenantId,
-    userId: (session.user as any).id ?? null,
+    userId: session.user.id ?? null,
     action: "MEMBERSHIP_UPDATE",
     entityType: "Membership",
     entityId: id,
@@ -170,7 +170,7 @@ export const DELETE = withApi(async (req: Request, ctx: { params: Promise<{ id: 
   }
 
   const me = await systemDb.membership.findFirst({
-    where: { userId: (session.user as any).id, tenantId },
+    where: { userId: session.user.id, tenantId },
     select: { isOwner: true, canManageMembers: true },
   });
   if (!me || !me.canManageMembers) return fail(403, "Forbidden", undefined, req);
@@ -192,9 +192,9 @@ export const DELETE = withApi(async (req: Request, ctx: { params: Promise<{ id: 
   const res = await db.membership.deleteMany({ where: { id } });
   if (res.count !== 1) return fail(404, "Not found", undefined, req);
 
-  await writeAudit(db as any, {
+  await writeAudit(db, {
     tenantId,
-    userId: (session.user as any).id ?? null,
+    userId: session.user.id ?? null,
     action: "MEMBERSHIP_DELETE",
     entityType: "Membership",
     entityId: id,
@@ -224,7 +224,7 @@ export const GET = withApi(async (req: Request, ctx: { params: Promise<{ id: str
   const tenantId = await requireCurrentTenantId();
 
   const me = await systemDb.membership.findFirst({
-    where: { userId: (session.user as any).id, tenantId },
+    where: { userId: session.user.id, tenantId },
     select: { canManageMembers: true },
   });
   if (!me || !me.canManageMembers) return fail(403, "Forbidden", undefined, req);

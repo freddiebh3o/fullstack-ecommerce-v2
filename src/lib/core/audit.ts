@@ -17,7 +17,11 @@ type AuditInput = {
  */
 type AuditDb = {
   auditLog: {
-    create: (args: { data: any }) => Promise<any>;
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    // Keep this intentionally 'any' so both PrismaClient and $extends clients are assignable.
+    // Function parameter variance makes stricter types fail structural matching here.
+    create: (...args: any[]) => Promise<any>;
+    /* eslint-enable @typescript-eslint/no-explicit-any */
   };
 };
 
@@ -25,17 +29,26 @@ type AuditDb = {
  * Shallow redaction of known secret-like fields inside an object.
  * Only traverses one level deep to keep it cheap and predictable.
  */
-function redactOnce(obj: any): any {
-  if (!obj || typeof obj !== "object") return obj;
+function redactOnce(obj: unknown): unknown {
+  if (obj === null || typeof obj !== "object") return obj;
   const secrets = new Set(["password", "token", "secret", "authorization", "cookie", "csrf"]);
-  const out: Record<string, any> = Array.isArray(obj) ? ([] as any) : {};
-  for (const [k, v] of Object.entries(obj)) {
+
+  if (Array.isArray(obj)) {
+    // For arrays, just mask objects one level deep, pass primitives through
+    return (obj as unknown[]).map((v) =>
+      v && typeof v === "object" ? "[object]" : v
+    );
+  }
+
+  const src = obj as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(src)) {
     if (secrets.has(k.toLowerCase())) {
-      (out as any)[k] = "[REDACTED]";
-    } else if (v && typeof v === "object") {
-      (out as any)[k] = "[object]";
+      out[k] = "[REDACTED]";
+    } else if (v !== null && typeof v === "object") {
+      out[k] = "[object]";
     } else {
-      (out as any)[k] = v;
+      out[k] = v;
     }
   }
   return out;
@@ -68,15 +81,17 @@ export async function writeAudit(db: AuditDb, input: AuditInput) {
 /**
  * Helper to compute a tiny before/after diff for updated fields.
  */
-export function diffForUpdate<T extends Record<string, any>>(
+export function diffForUpdate<T extends Record<string, unknown>>(
   before: T,
   after: T,
   changedKeys: (keyof T)[]
 ) {
-  const pick = (obj: T) =>
-    changedKeys.reduce((acc, k) => {
-      (acc as any)[k as string] = obj[k];
+  const pick = (obj: T): Partial<T> => {
+      const acc: Partial<T> = {};
+      for (const k of changedKeys) {
+        acc[k] = obj[k];
+      }
       return acc;
-    }, {} as Partial<T>);
+    };
   return { before: pick(before), after: pick(after) };
 }
