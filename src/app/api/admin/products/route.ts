@@ -1,6 +1,5 @@
 // src/app/api/admin/products/route.ts
 import { requireSession } from "@/lib/auth/session";
-import { requireCurrentTenantId } from "@/lib/core/tenant";
 import { prismaForTenant } from "@/lib/db/tenant-scoped";
 import { systemDb } from "@/lib/db/system";
 import { ok, fail } from "@/lib/utils/http";

@@ -1,5 +1,6 @@
-// src/lib/log.ts
+// src/lib/log/log.ts
 import pino from "pino";
+import { canonicalFrom } from "@/lib/http/canonical";
 
 // Narrow type we use when binding request info
 export type RequestMeta = {
@@ -52,6 +53,7 @@ export const logger = pino({
 export function loggerForRequest(req: Request, extra?: Record<string, unknown>) {
   const requestId = getOrCreateRequestId(req.headers);
   const url = new URL(req.url);
+  const { origin } = canonicalFrom(req.headers);
   const meta: RequestMeta = {
     requestId,
     method: req.method,
@@ -62,6 +64,6 @@ export function loggerForRequest(req: Request, extra?: Record<string, unknown>) 
   return {
     requestId,
     meta,
-    log: logger.child({ ...meta, ...(extra ?? {}) }),
+    log: logger.child({ ...meta, origin, ...(extra ?? {}) }),
   };
 }

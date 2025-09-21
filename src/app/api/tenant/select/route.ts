@@ -2,7 +2,7 @@
 import { cookies } from "next/headers";
 import { requireSession } from "@/lib/auth/session";
 import { systemDb } from "@/lib/db/system";
-import { TENANT_COOKIE } from "@/lib/core/constants";
+import { TENANT_COOKIE, tenantCookieAttributes } from "@/lib/core/constants";
 import { ok, fail } from "@/lib/utils/http";
 import { withApi } from "@/lib/utils/with-api";
 import { TenantSelectSchema } from "@/lib/core/schemas";
@@ -26,13 +26,7 @@ export const POST = withApi(async (req: Request) => {
 
   // Set secure cookie
   const jar = await cookies();
-  jar.set(TENANT_COOKIE, tenantId, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 7, // 7 days
-  });
+  jar.set(TENANT_COOKIE, tenantId, tenantCookieAttributes());
 
   return ok({ selected: true }, 200, req);
 });
