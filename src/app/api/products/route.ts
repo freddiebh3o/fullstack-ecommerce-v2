@@ -1,18 +1,18 @@
-// import { NextResponse } from "next/server";
-// import { requireSession } from "@/lib/auth/session";
-// import { dbForCurrentTenantOrThrow } from "@/lib/core/tenant";
+import { NextResponse } from "next/server";
+import { requireSession } from "@/lib/auth/session";
+import { dbForCurrentTenantOrThrow } from "@/lib/core/tenant";
 
-// export async function GET() {
-//   // auth required
-//   await requireSession();
+export async function GET() {
+  // auth required
+  await requireSession();
 
-//   // tenant-bound prisma client
-//   const db = await dbForCurrentTenantOrThrow();
+  // tenant-bound prisma client
+  const db = await dbForCurrentTenantOrThrow();
 
-//   const products = await db.product.findMany({
-//     orderBy: { createdAt: "asc" },
-//     select: { id: true, sku: true, name: true, priceInPence: true, currency: true, isActive: true },
-//   });
+  const products = await db.product.findMany({
+    orderBy: { createdAt: "asc" },
+    select: { id: true, sku: true, name: true, priceInPence: true, currency: true, isActive: true },
+  });
 
-//   return NextResponse.json({ ok: true, data: products });
-// }
+  return NextResponse.json({ ok: true, data: products });
+}

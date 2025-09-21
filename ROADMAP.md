@@ -35,10 +35,10 @@ _Target: single Next.js app in a monorepo, custom domains, strong tenant isolati
 ---
 
 ## Phase 1 — Tenant Resolution & Custom Domains (Backbone)
-- [ ] Implement **host→tenant** resolution (Node runtime helper preferred) using `Domain` table.
-- [ ] Set `tenant_id` in secure cookie / request context; unknown hosts → safe 404 or onboarding.
-- [ ] Admin UI to manage domains: add, mark primary, verify.
-- [ ] Canonicals & links derive from **tenant primary domain**.
+- [x] Implement **host→tenant** resolution (Node runtime helper preferred) using `Domain` table.
+- [x] Set `tenant_id` in secure cookie / request context; unknown hosts → safe 404 or onboarding.
+- [x] Conceptualised manual process for setting domains for merchants
+- [x] Canonicals & links derive from **tenant primary domain**.
 
 **Exit criteria**
 - Visiting wildcard subdomains or registered custom domains yields the same resolved `tenantId`.

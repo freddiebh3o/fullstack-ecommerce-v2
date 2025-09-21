@@ -220,6 +220,113 @@ Key folders/files:
 
 ---
 
+## Tenant Resolution & Custom Domains – Ops Notes
+
+This project supports **host-based tenant resolution** with a safe, cookie-synced fallback for admin/dev flows. We currently onboard custom domains **manually** (no self-serve UI).
+
+---
+
+### How a request resolves a tenant
+
+1. **Host lookup**: We normalize `Host`/`X-Forwarded-Host` and query the `Domain` table by `host`.
+   - **Production**: only `status = VERIFIED` records are honored.
+   - **Dev**: `withTenant({ allowPendingInDev: true })` also allows `PENDING` for convenience.
+2. **Request-scoped context**: The resolved `{ tenantId, source }` is stored in a per-request context. See `withTenant` (and `withPublic` for public endpoints).
+3. **Cookie sync (non-destructive)**: If a tenant is resolved from the host and the `tenant_id` cookie differs/missing, we set it using secure attributes. We never overwrite the tenant based on a conflicting cookie value from the client.
+
+**Public routes**
+- Use `withPublic(...)` and return **404** when no tenant is resolved from the host.
+- Never fall back to the cookie for public paths.
+
+**Admin/API routes**
+- Use `withTenant(...)`; in dev, we allow cookie fallback for admin convenience.
+- Permissions remain enforced via membership checks as usual.
+
+---
+
+### Manual domain onboarding (ops)
+
+We do *manual* domain setup for merchants (no owner-facing CRUD yet):
+
+1. **Create the domain row** in the `Domain` table for the merchant's `tenantId` and desired `host`. Mark one as `isPrimary = true` per tenant (optional but recommended for canonical URLs).
+2. **DNS**: Ask the merchant to point their DNS:
+   - `A/AAAA` records to our edge/proxy/load balancer **or**
+   - a `CNAME` to our edge hostname (recommended for subdomains).
+3. **Verification**: In production, set `status = VERIFIED` (only VERIFIED hosts resolve). In dev, `PENDING` is acceptable when `allowPendingInDev` is true.
+4. **Purge host cache** (if applicable). We keep a small TTL cache in `resolveTenantByHost` – it auto-expires quickly.
+
+See `docs/manual-domain-ops.sql` for example SQL snippets.
+
+---
+
+### Testing quick links
+
+- Public unknown host → 404: `tests/integration/api/public/ping.spec.ts`
+- Canonical/URL helpers: `tests/unit/http/*.spec.ts`
+- Products/admin routes: `tests/integration/api/products/*`
+
+---
+
+### Environment
+
+- `APP_BASE_URL` (optional) – forces canonical origin for URL builders.
+- `NODE_ENV=production` – host resolution requires `VERIFIED`.
+- Rate limits: `RL_MUTATION_PER_IP_PER_MIN`, `RL_MUTATION_PER_USER_PER_MIN`.
+```
+sql_content = """-- docs/manual-domain-ops.sql
+-- Manual domain onboarding helper snippets
+-- Adjust table/column names if your Prisma schema differs.
+
+-- 1 Look up tenant by slug/email or known id
+-- (Example) Find tenant id from slug
+SELECT id AS tenant_id, slug, name
+FROM "Tenant"
+WHERE slug = 'acme' LIMIT 1;
+
+-- 2 Insert a domain for this tenant
+-- Use isPrimary = true for the canonical domain (one per tenant recommended)
+INSERT INTO "Domain" (id, "tenantId", host, "isPrimary", status, "createdAt", "updatedAt")
+VALUES (
+  gen_random_uuid(),
+  '00000000-0000-0000-0000-000000000000', -- replace with tenant id
+  'shop.example.com',                     -- replace with merchant host
+  TRUE,                                   -- set TRUE if this should be the canonical/primary
+  'VERIFIED',                             -- in production, VERIFIED is required to resolve
+  NOW(),
+  NOW()
+);
+
+-- 3 (Optional) Demote all other domains for this tenant if you just promoted one
+UPDATE "Domain"
+SET "isPrimary" = FALSE, "updatedAt" = NOW()
+WHERE "tenantId" = '00000000-0000-0000-0000-000000000000'
+  AND host <> 'shop.example.com'
+  AND "isPrimary" = TRUE;
+
+-- 4 (Optional) Flip a domain to VERIFIED (e.g., after DNS is confirmed)
+UPDATE "Domain"
+SET status = 'VERIFIED', "updatedAt" = NOW()
+WHERE host = 'shop.example.com';
+
+-- 5 Remove a domain (if needed)
+DELETE FROM "Domain"
+WHERE host = 'old.example.com';
+
+-- 6 Quick checks
+-- Case-insensitive query example (Postgres ILIKE)
+SELECT id, "tenantId", host, "isPrimary", status, "createdAt"
+FROM "Domain"
+WHERE host ILIKE 'shop.example.com';
+
+-- Count primaries per tenant (should be 0 or 1)
+SELECT "tenantId", COUNT(*) FILTER (WHERE "isPrimary") AS primaries
+FROM "Domain"
+GROUP BY "tenantId"
+ORDER BY primaries DESC;
+```
+
+---
+
 ## 🔐 Security
 - **CSRF double‑submit:** `csrf` cookie + `x-csrf-token` header.
 - **Origin/Referer** checks on state‑changing routes.
