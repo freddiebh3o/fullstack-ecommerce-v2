@@ -1,3 +1,4 @@
+// tests/integration/api/products.get-and-delete.spec.ts
 import { describe, test, expect } from "vitest";
 import "../../../_utils/next-auth.mock";
 import { buildReq, parse, mergeHeaders } from "../../../_utils/http";

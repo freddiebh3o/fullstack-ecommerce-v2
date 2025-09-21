@@ -1,7 +1,6 @@
 // src/app/api/admin/members/route.ts
 import { MemberCreateSchema } from "@/lib/core/schemas";
 import { requireSession } from "@/lib/auth/session";
-import { requireCurrentTenantId } from "@/lib/core/tenant";
 import { prismaForTenant } from "@/lib/db/tenant-scoped";
 import { systemDb } from "@/lib/db/system";
 import { ok, fail } from "@/lib/utils/http";
@@ -11,11 +10,13 @@ import { isUniqueViolation } from "@/lib/utils/prisma-errors";
 import { loggerForRequest } from "@/lib/log/log";
 import { rateLimitFixedWindow } from "@/lib/security/rate-limit";
 import { reserveIdempotency, persistIdempotentSuccess } from "@/lib/security/idempotency";
+import { getTenantId } from "@/lib/tenant/context";
 
 // GET: list members for current tenant
 export const GET = withApi(async (req: Request) => {
   const session = await requireSession();
-  const tenantId = await requireCurrentTenantId();
+  const tenantId = getTenantId();
+  if (!tenantId) return fail(404, "Tenant not resolved", undefined, req);
 
   const me = await systemDb.membership.findFirst({
     where: { userId: session.user.id, tenantId },
@@ -63,7 +64,8 @@ export const GET = withApi(async (req: Request) => {
 // POST: attach existing user to this tenant (idempotent + rate-limited)
 export const POST = withApi(async (req: Request) => {
   const session = await requireSession();
-  const tenantId = await requireCurrentTenantId();
+  const tenantId = getTenantId();
+  if (!tenantId) return fail(404, "Tenant not resolved", undefined, req);
 
   const userId = session.user.id ?? null;
 

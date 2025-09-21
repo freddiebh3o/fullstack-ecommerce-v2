@@ -1,6 +1,6 @@
 // src/app/api/admin/products/[id]/route.ts
 import { requireSession } from "@/lib/auth/session";
-import { requireCurrentTenantId } from "@/lib/core/tenant";
+// import { requireCurrentTenantId } from "@/lib/core/tenant";
 import { prismaForTenant } from "@/lib/db/tenant-scoped";
 import { systemDb } from "@/lib/db/system";
 import { ProductUpdateSchema } from "@/lib/core/schemas";
@@ -10,10 +10,12 @@ import { withApi } from "@/lib/utils/with-api";
 import { loggerForRequest } from "@/lib/log/log";
 import { rateLimitFixedWindow } from "@/lib/security/rate-limit";
 import { reserveIdempotency, persistIdempotentSuccess } from "@/lib/security/idempotency";
+import { getTenantId } from "@/lib/tenant/context";
 
 export const PATCH = withApi(async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   const session = await requireSession();
-  const tenantId = await requireCurrentTenantId();
+  const tenantId = getTenantId();
+  if (!tenantId) return fail(404, "Tenant not resolved", undefined, req);
   const { id } = await params;
 
   // Idempotency
@@ -133,7 +135,9 @@ export const PATCH = withApi(async (req: Request, { params }: { params: Promise<
 export const DELETE = withApi(async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   const { id } = await params;
   const session = await requireSession();
-  const tenantId = await requireCurrentTenantId();
+  const tenantId = getTenantId();
+  if (!tenantId) return fail(404, "Tenant not resolved", undefined, req);
+
   const { log } = loggerForRequest(req);
   const userId = session.user.id as string;
   const uStats = rateLimitFixedWindow({
@@ -189,7 +193,9 @@ export const DELETE = withApi(async (req: Request, { params }: { params: Promise
 
 export const GET = withApi(async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   const session = await requireSession();
-  const tenantId = await requireCurrentTenantId();
+  const tenantId = getTenantId();
+  if (!tenantId) return fail(404, "Tenant not resolved", undefined, req);
+  
   const { id } = await params;
 
   const me = await systemDb.membership.findFirst({

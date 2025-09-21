@@ -5,6 +5,7 @@ import { loggerForRequest } from "@/lib/log/log";
 import { ipFromRequest, rateLimitFixedWindow } from "../security/rate-limit";
 import { mapPrismaError } from "@/lib/utils/prisma-errors";
 import { fail } from "@/lib/utils/http";
+import { withTenant } from "@/lib/tenant/withTenant";
 
 // Overload: handlers without ctx
 export function withApi<TRes extends NextResponse = NextResponse>(
@@ -56,60 +57,41 @@ export function withApi(
     }
 
     try {
-      const res: NextResponse = await handler(req, ctx);
+      // 👇 ensure tenant context is derived from THIS request
+      const res: NextResponse = await withTenant(
+        () => Promise.resolve(handler(req, ctx)),
+        {
+          allowCookieFallbackForAdmin: true,
+          allowPendingInDev: process.env.NODE_ENV !== "production",
+        },
+        req
+      );
+
       res.headers.set("x-request-id", requestId);
-
-      log.info({
-        status: res.status,
-        durationMs: Date.now() - started,
-      });
-
+      log.info({ status: res.status, durationMs: Date.now() - started });
       return res;
     } catch (err) {
-      // 1) Zod thrown (in case any route uses .parse())
       if (err instanceof ZodError) {
         const issues = err.flatten();
-        log.info({
-          event: "zod_validation_error",
-          issues,
-          durationMs: Date.now() - started,
-        });
+        log.info({ event: "zod_validation_error", issues, durationMs: Date.now() - started });
         return fail(422, "Invalid input", { issues }, req) as NextResponse;
       }
 
-      // 2) Prisma → HTTP mapping
       const mapped = mapPrismaError(err);
       if (mapped) {
         log.warn(
-          {
-            event: "prisma_error",
-            status: mapped.status,
-            ...mapped.details,
-            durationMs: Date.now() - started,
-          },
+          { event: "prisma_error", status: mapped.status, ...mapped.details, durationMs: Date.now() - started },
           mapped.message
         );
         return fail(mapped.status, mapped.message, undefined, req) as NextResponse;
       }
 
-      // 3) Malformed JSON (req.json() usually throws SyntaxError)
       if (err instanceof SyntaxError) {
-        log.info({
-          event: "malformed_json",
-          durationMs: Date.now() - started,
-        });
+        log.info({ event: "malformed_json", durationMs: Date.now() - started });
         return fail(400, "Malformed JSON", undefined, req) as NextResponse;
       }
 
-      // 4) Fallback: unexpected error
-      log.error(
-        {
-          event: "unhandled_route_error",
-          err,
-          durationMs: Date.now() - started,
-        },
-        "unhandled_route_error"
-      );
+      log.error({ event: "unhandled_route_error", err, durationMs: Date.now() - started }, "unhandled_route_error");
       return fail(500, "Internal Server Error", undefined, req) as NextResponse;
     }
   };

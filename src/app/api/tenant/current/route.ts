@@ -1,5 +1,5 @@
 // src/app/api/tenant/current/route.ts
-import { getCurrentTenantId } from "@/lib/core/tenant";
+import { getTenantId } from "@/lib/tenant/context";
 import { systemDb } from "@/lib/db/system";
 import { requireSession } from "@/lib/auth/session";
 import { ok, fail } from "@/lib/utils/http";
@@ -7,8 +7,8 @@ import { withApi } from "@/lib/utils/with-api";
 
 export const GET = withApi(async (req: Request) => {
   const session = await requireSession();
-  const tenantId = await getCurrentTenantId();
-  if (!tenantId) return fail(400, "No tenant selected", undefined, req);
+  const tenantId = getTenantId();
+  if (!tenantId) return fail(403, "Tenant not resolved", undefined, req);
 
   // Ensure user still belongs to it (defensive)
   const m = await systemDb.membership.findFirst({

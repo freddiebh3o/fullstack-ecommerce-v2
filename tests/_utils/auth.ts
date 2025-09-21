@@ -22,5 +22,13 @@ export async function withAuthAndTenant() {
     tenant_id: tenant.id, // adjust if your app uses a different cookie name
   };
 
-  return { headers, cookies, tenantId: tenant.id, userId: owner.id };
+  return { 
+    headers: {
+      ...headers,
+      "x-test-tenant-id": tenant.id,
+    }, 
+    cookies, 
+    tenantId: tenant.id, 
+    userId: owner.id 
+  };
 }

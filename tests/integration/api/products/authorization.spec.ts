@@ -1,3 +1,4 @@
+// tests/integration/api/products.authorization.spec.ts
 import { describe, test, expect } from "vitest";
 import "../../../_utils/next-auth.mock";
 import { buildReq, mergeHeaders, parse } from "../../../_utils/http";

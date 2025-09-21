@@ -23,14 +23,25 @@ model IdempotencyKey {
   @@index([createdAt])
 }
 
+enum DomainStatus {
+  PENDING
+  VERIFIED
+}
+
 model Domain {
-  id        String   @id @default(uuid())
-  tenantId  String
-  host      String   @unique // e.g. shop.acme.com
-  isPrimary Boolean  @default(false)
-  createdAt DateTime @default(now())
+  id                String       @id @default(uuid())
+  tenantId          String
+  host              String       @unique
+  isPrimary         Boolean      @default(false)
+  status            DomainStatus @default(PENDING)
+  verificationToken String?
+  verifiedAt        DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
 }
 
 model User {
