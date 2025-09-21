@@ -34,7 +34,7 @@ This project is **backend‑first**. You can exercise APIs immediately without a
 - **pnpm/npm** (commands below use `npm`)  
 
 > Ensure a reachable Postgres URL. For local dev, something like:  
-> `postgresql://postgres:postgres@localhost:5432/fullstack_ecommerce?schema=public`
+> `postgresql://postgres:postgres@localhost:5432/mtenants?connection_limit=10&pool_timeout=30`
 
 ---
 
