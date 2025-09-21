@@ -47,9 +47,20 @@ _Target: single Next.js app in a monorepo, custom domains, strong tenant isolati
 ---
 
 ## Phase 2 — Admin Shell & RBAC
+- [ ] Use Mantine component library for admin shell
 - [ ] Admin layout: sidebar, topbar, current tenant indicator, role-aware nav.
 - [ ] Route guards: OWNER/ADMIN/WAREHOUSE/SALES (examples; adjustable).
 - [ ] Tenant switcher (if user has multiple tenants).
+
+**Exit criteria**
+- Unauthorized roles see “forbidden” views; nav only shows allowed sections.
+- OWNER can switch tenant context without page hacks.
+
+---
+
+## Phase 2.5 — Tenant Admin Branding/Theming
+- [ ] Ability to allow the tenant OWNER to customise the branding/theming of the admin panel
+- [ ] Need to figure out all the different theme variables we allow the user to customise.
 
 **Exit criteria**
 - Unauthorized roles see “forbidden” views; nav only shows allowed sections.
