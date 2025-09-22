@@ -2,6 +2,7 @@
 import type { Metadata } from "next";
 import "@mantine/core/styles.css";
 import "@mantine/notifications/styles.css";
+import '@mantine/nprogress/styles.css';
 import { ColorSchemeScript } from "@mantine/core";
 import Providers from "@/app/providers";
 import "./globals.css";
